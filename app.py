@@ -30,7 +30,7 @@ if pod_file:
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign To" in df_pod.columns:
+    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         # Get delivery date
@@ -44,7 +44,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign To").agg(
+        pod_summary = df_pod.groupby("Assign to").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -57,7 +57,7 @@ if pod_file:
         pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
 
         fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
-        bars_pod = ax_pod.bar(pod_summary_sorted["Assign To"], pod_summary_sorted["Total_PODs"], color="orange")
+        bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
         ax_pod.set_title("Total PODs per Rider")
         ax_pod.set_xlabel("Rider")
         ax_pod.set_ylabel("Total PODs")
