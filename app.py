@@ -10,16 +10,14 @@ st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
 This tool lets you upload Excel files and get:
-- ✅ Rider **POD tracking summary + bar chart**
-- ✅ Rider **idle time, mileage, and max speed summary + bar chart**
-- ✅ Downloadable tables and **downloadable charts as PNG**
+- Rider **POD tracking summary + bar chart**
+- Rider **idle time, mileage, and max speed summary + bar chart**
+- Downloadable tables and **downloadable charts as PNG**
 
 ---
 """)
 
-# -----------------------------
 # Section 1: POD Tracking
-# -----------------------------
 st.header("📦 POD Tracking Summary")
 
 pod_file = st.file_uploader("Upload POD Excel file", type=["xlsx", "xls"], key="pod")
