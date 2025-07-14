@@ -43,7 +43,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign To").agg(
+        pod_summary = df_pod.groupby("Assign to").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -67,7 +67,7 @@ if pod_file:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("❌ Required columns 'Assign To' and 'POD Time' not found in this file.")
+        st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
 
 # -----------------------------
 # Section 2: Idle Time Analysis
