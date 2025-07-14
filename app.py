@@ -10,9 +10,9 @@ st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
 This tool lets you upload Excel files and get:
-- ✅ Rider **POD tracking summary**
-- ✅ Rider **idle time, mileage, and max speed summary**
-- ✅ Idle time bar chart (converted to hours, >15 min only)
+- ✅ Rider **POD tracking summary + bar chart**
+- ✅ Rider **idle time, mileage, and max speed summary + bar chart**
+- ✅ Downloadable tables and **downloadable charts as PNG**
 
 ---
 """)
@@ -43,7 +43,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign To").agg(
+        pod_summary = df_pod.groupby("Assign to").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -51,6 +51,36 @@ if pod_file:
 
         st.subheader("📄 POD Summary Table")
         st.dataframe(pod_summary)
+
+        # Bar chart for PODs
+        pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
+
+        fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
+        bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
+        ax_pod.set_title("Total PODs per Rider")
+        ax_pod.set_xlabel("Rider")
+        ax_pod.set_ylabel("Total PODs")
+        plt.xticks(rotation=60, ha='right')
+
+        # Add data labels
+        for bar in bars_pod:
+            height = bar.get_height()
+            ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+
+        st.pyplot(fig_pod)
+
+        # Save POD chart as image buffer
+        pod_img_buf = io.BytesIO()
+        fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
+        pod_img_buf.seek(0)
+
+        st.download_button(
+            label="⬇️ Download POD Chart (PNG)",
+            data=pod_img_buf,
+            file_name="pod_chart.png",
+            mime="image/png"
+        )
 
         # Convert to Excel
         output_pod = io.BytesIO()
@@ -67,7 +97,7 @@ if pod_file:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("❌ Required columns 'Assign To' and 'POD Time' not found in this file.")
+        st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
 
 # -----------------------------
 # Section 2: Idle Time Analysis
@@ -151,14 +181,32 @@ if rider_files:
         summary_df_sorted = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
 
         # Create bar chart
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Idle time >15 mins (hrs)"], color="skyblue")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        bars = ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Idle time >15 mins (hrs)"], color="skyblue")
         ax.set_title("Idle Time >15 mins per Rider (hours)")
         ax.set_xlabel("Rider")
         ax.set_ylabel("Idle Time >15 mins (hrs)")
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=60, ha='right')
+
+        # Add data labels
+        for bar in bars:
+            height = bar.get_height()
+            ax.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
         st.pyplot(fig)
+
+        # Save idle chart as image buffer
+        idle_img_buf = io.BytesIO()
+        fig.savefig(idle_img_buf, format='png', bbox_inches="tight")
+        idle_img_buf.seek(0)
+
+        st.download_button(
+            label="⬇️ Download Idle Time Chart (PNG)",
+            data=idle_img_buf,
+            file_name="idle_time_chart.png",
+            mime="image/png"
+        )
 
         # Remove numeric hours column before display & export
         summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
