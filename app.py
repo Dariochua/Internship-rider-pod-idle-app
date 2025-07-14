@@ -12,7 +12,7 @@ st.markdown("""
 This tool lets you upload Excel files and get:
 - ✅ Rider **POD tracking summary**
 - ✅ Rider **idle time, mileage, and max speed summary**
-- ✅ Idle time bar chart (converted to hours)
+- ✅ Idle time bar chart (converted to hours, >15 min only)
 
 ---
 """)
@@ -29,7 +29,7 @@ if pod_file:
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
+    if "POD Time" in df_pod.columns and "Assign To" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         # Get delivery date
@@ -43,7 +43,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign to").agg(
+        pod_summary = df_pod.groupby("Assign To").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -67,7 +67,7 @@ if pod_file:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
+        st.error("❌ Required columns 'Assign To' and 'POD Time' not found in this file.")
 
 # -----------------------------
 # Section 2: Idle Time Analysis
@@ -133,21 +133,32 @@ if rider_files:
 
     if summary:
         summary_df = pd.DataFrame(summary)
+
+        # Create formatted "X hr Y min" column for idle >15 mins
+        def format_hours_mins(x):
+            if x == 0 or pd.isna(x):
+                return "0 hr 0 min"
+            hours = int(x // 60)
+            mins = int(x % 60)
+            return f"{hours} hr {mins} min"
+
+        summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
+
         st.subheader("📄 Idle Time Summary Table")
         st.dataframe(summary_df)
 
-        # Convert minutes to hours
-        summary_df["Total idle time (hrs)"] = summary_df["Total idle time (mins)"] / 60
+        # Convert idle >15 mins (mins) to hours for chart
+        summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        # Sort for prettier plot
-        summary_df_sorted = summary_df.sort_values("Total idle time (hrs)", ascending=False)
+        # Sort for chart
+        summary_df_sorted = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
 
         # Create bar chart
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Total idle time (hrs)"], color="skyblue")
-        ax.set_title("Total Idle Time per Rider (hours)")
+        ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Idle time >15 mins (hrs)"], color="skyblue")
+        ax.set_title("Idle Time >15 mins per Rider (hours)")
         ax.set_xlabel("Rider")
-        ax.set_ylabel("Idle Time (hrs)")
+        ax.set_ylabel("Idle Time >15 mins (hrs)")
         plt.xticks(rotation=45)
 
         st.pyplot(fig)
