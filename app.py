@@ -101,7 +101,7 @@ if uploaded_files:
 
 if st.button("🗑️ Clear All Files"):
     st.session_state.uploaded_files = []
-    st.experimental_rerun()
+    st.rerun()
 
 if st.session_state.uploaded_files:
     rider_files = st.session_state.uploaded_files
