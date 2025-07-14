@@ -14,7 +14,7 @@ This tool lets you upload Excel files and get:
 - ✅ Rider **POD tracking summary + bar chart**
 - ✅ Rider **idle time, mileage, and max speed summary + charts**
 - ✅ Downloadable tables and **downloadable charts as PNG**
-- ✅ Idle periods counted only between 8:30 AM – 5:30 PM
+- ✅ Idle periods and max speed counted only between 8:30 AM – 5:30 PM
 
 ---
 """)
@@ -127,6 +127,10 @@ if rider_files:
         work_start = datetime.time(8, 30)
         work_end = datetime.time(17, 30)
 
+        # Add time-only column for filtering
+        df['Time_only'] = df['Time'].dt.time
+        df_working = df[(df['Time_only'] >= work_start) & (df['Time_only'] <= work_end)]
+
         idle_periods = []
         current_start = None
 
@@ -156,7 +160,9 @@ if rider_files:
         total_over_15 = sum(over_15)
         num_over_15 = len(over_15)
         total_mileage = df['Mileage (km)'].sum()
-        max_speed = df['Speed (km/h)'].max()
+
+        # ✅ Use only working hours data for max speed
+        max_speed = df_working['Speed (km/h)'].max()
 
         summary.append({
             "File": file.name,
@@ -180,7 +186,6 @@ if rider_files:
             return f"{hours} hr {mins} min"
 
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
-
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
         # Sort for idle chart
