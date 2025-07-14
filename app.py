@@ -11,10 +11,10 @@ st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
 This tool lets you upload Excel files and get:
-- Rider **POD tracking summary**
-- Rider **idle time, mileage, and max speed summary**
-- Downloadable tables and **downloadable charts as PNG**
-- Idle periods counted only between 8:30 AM – 5:30 PM
+- ✅ Rider **POD tracking summary + bar chart**
+- ✅ Rider **idle time, mileage, and max speed summary + charts**
+- ✅ Downloadable tables and **downloadable charts as PNG**
+- ✅ Idle periods counted only between 8:30 AM – 5:30 PM
 
 ---
 """)
@@ -71,7 +71,6 @@ if pod_file:
 
         st.pyplot(fig_pod)
 
-        # Save POD chart
         pod_img_buf = io.BytesIO()
         fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
         pod_img_buf.seek(0)
@@ -184,66 +183,68 @@ if rider_files:
 
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        summary_df_sorted = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
+        # Sort for idle chart
+        summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        bars = ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Idle time >15 mins (hrs)"], color="skyblue")
-        ax.set_title("Idle Time >15 mins per Rider (hours)")
-        ax.set_xlabel("Rider")
-        ax.set_ylabel("Idle Time >15 mins (hrs)")
+        fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
+        bars_idle = ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
+        ax_idle.set_title("Idle Time >15 mins per Rider (hours)")
+        ax_idle.set_xlabel("Rider")
+        ax_idle.set_ylabel("Idle Time >15 mins (hrs)")
         plt.xticks(rotation=60, ha='right')
-
-        for bar in bars:
+        for bar in bars_idle:
             height = bar.get_height()
-            ax.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                        xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                             xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
-        st.pyplot(fig)
-
-        idle_img_buf = io.BytesIO()
-        fig.savefig(idle_img_buf, format='png', bbox_inches="tight")
-        idle_img_buf.seek(0)
-
-        st.download_button(
-            label="⬇️ Download Idle Time Chart (PNG)",
-            data=idle_img_buf,
-            file_name="idle_time_chart.png",
-            mime="image/png"
-        )
-
-        summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
-
-        st.subheader("📄 Idle Time Summary Table")
-        st.dataframe(summary_df)
-
-        # Max speed chart
+        # Sort for speed chart
         summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
 
-        fig_speed, ax_speed = plt.subplots(figsize=(10, 6))
+        fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
         bars_speed = ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
-        ax_speed.set_title("Max Speed per Rider")
+        ax_speed.set_title("Max Speed per Rider (km/h)")
         ax_speed.set_xlabel("Rider")
         ax_speed.set_ylabel("Max Speed (km/h)")
         plt.xticks(rotation=60, ha='right')
-
         for bar in bars_speed:
             height = bar.get_height()
             ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
-        st.pyplot(fig_speed)
+        # Show charts side by side
+        col1, col2 = st.columns(2)
 
-        speed_img_buf = io.BytesIO()
-        fig_speed.savefig(speed_img_buf, format='png', bbox_inches="tight")
-        speed_img_buf.seek(0)
+        with col1:
+            st.pyplot(fig_idle)
+            idle_img_buf = io.BytesIO()
+            fig_idle.savefig(idle_img_buf, format='png', bbox_inches="tight")
+            idle_img_buf.seek(0)
+            st.download_button(
+                label="⬇️ Download Idle Time Chart (PNG)",
+                data=idle_img_buf,
+                file_name="idle_time_chart.png",
+                mime="image/png"
+            )
 
-        st.download_button(
-            label="⬇️ Download Max Speed Chart (PNG)",
-            data=speed_img_buf,
-            file_name="max_speed_chart.png",
-            mime="image/png"
-        )
+        with col2:
+            st.pyplot(fig_speed)
+            speed_img_buf = io.BytesIO()
+            fig_speed.savefig(speed_img_buf, format='png', bbox_inches="tight")
+            speed_img_buf.seek(0)
+            st.download_button(
+                label="⬇️ Download Max Speed Chart (PNG)",
+                data=speed_img_buf,
+                file_name="max_speed_chart.png",
+                mime="image/png"
+            )
 
+        summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
+
+        # Table below
+        st.subheader("📄 Idle Time Summary Table")
+        st.dataframe(summary_df)
+
+        # Excel export
         output_idle = io.BytesIO()
         with pd.ExcelWriter(output_idle, engine='openpyxl') as writer:
             summary_df.to_excel(writer, index=False, sheet_name="Idle Summary")
