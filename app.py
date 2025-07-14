@@ -34,7 +34,6 @@ if pod_file:
     if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
-        # Get delivery date
         if "Delivery Date" in df_pod.columns:
             delivery_date_raw = df_pod["Delivery Date"].iloc[0]
             try:
@@ -44,7 +43,6 @@ if pod_file:
         else:
             delivery_date = "unknown_date"
 
-        # Group and summarize
         pod_summary = df_pod.groupby("Assign to").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
@@ -74,12 +72,7 @@ if pod_file:
         fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
         pod_img_buf.seek(0)
 
-        st.download_button(
-            label="⬇️ Download POD Chart (PNG)",
-            data=pod_img_buf,
-            file_name="pod_chart.png",
-            mime="image/png"
-        )
+        st.download_button("⬇️ Download POD Chart (PNG)", pod_img_buf, "pod_chart.png", "image/png")
 
         output_pod = io.BytesIO()
         with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
@@ -88,12 +81,7 @@ if pod_file:
 
         file_name_pod = f"pod_summary_{delivery_date}.xlsx"
 
-        st.download_button(
-            label="⬇️ Download POD Summary Excel",
-            data=processed_pod,
-            file_name=file_name_pod,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
         st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
 
@@ -211,12 +199,12 @@ if rider_files:
 
         summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
 
-        fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
+        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))  # Wider and taller figure
         bars_mileage = ax_mileage.bar(summary_df_sorted_mileage["Rider"], summary_df_sorted_mileage["Total mileage (km)"], color="purple")
         ax_mileage.set_title("Total Mileage per Rider (km)")
         ax_mileage.set_xlabel("Rider")
         ax_mileage.set_ylabel("Total Mileage (km)")
-        plt.xticks(rotation=60, ha='right')
+        plt.xticks(rotation=45, ha='right', fontsize=9)
         for bar in bars_mileage:
             height = bar.get_height()
             ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
