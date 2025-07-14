@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import re
 import matplotlib.pyplot as plt
+import datetime
 
 st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
 
@@ -10,14 +11,16 @@ st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
 This tool lets you upload Excel files and get:
-- Rider **POD tracking summary**
-- Rider **idle time, mileage, and max speed summary**
-- Downloadable tables and **downloadable charts as PNG**
+- ✅ Rider **POD tracking summary + bar chart**
+- ✅ Rider **idle time, mileage, and max speed summary + bar chart (only within 8:30 AM – 5:30 PM)**
+- ✅ Downloadable tables and **downloadable charts as PNG**
 
 ---
 """)
 
+# -----------------------------
 # Section 1: POD Tracking
+# -----------------------------
 st.header("📦 POD Tracking Summary")
 
 pod_file = st.file_uploader("Upload POD Excel file", type=["xlsx", "xls"], key="pod")
@@ -27,7 +30,7 @@ if pod_file:
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
+    if "POD Time" in df_pod.columns and "Assign To" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         # Get delivery date
@@ -41,7 +44,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign to").agg(
+        pod_summary = df_pod.groupby("Assign To").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -54,7 +57,7 @@ if pod_file:
         pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
 
         fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
-        bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
+        bars_pod = ax_pod.bar(pod_summary_sorted["Assign To"], pod_summary_sorted["Total_PODs"], color="orange")
         ax_pod.set_title("Total PODs per Rider")
         ax_pod.set_xlabel("Rider")
         ax_pod.set_ylabel("Total PODs")
@@ -95,7 +98,7 @@ if pod_file:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
+        st.error("❌ Required columns 'Assign To' and 'POD Time' not found in this file.")
 
 # -----------------------------
 # Section 2: Idle Time Analysis
@@ -126,10 +129,22 @@ if rider_files:
         df['Time'] = pd.to_datetime(df['Time'], format='%I:%M:%S %p', errors='coerce')
         df['Idle'] = df['Mileage (km)'] == 0
 
+        # Define working hours
+        work_start = datetime.time(8, 30)
+        work_end = datetime.time(17, 30)
+
         idle_periods = []
         current_start = None
 
         for idx, row in df.iterrows():
+            t = row['Time'].time()
+
+            if t < work_start or t > work_end:
+                if current_start is not None:
+                    idle_periods.append((current_start, row['Time']))
+                    current_start = None
+                continue
+
             if row['Idle']:
                 if current_start is None:
                     current_start = row['Time']
@@ -137,7 +152,8 @@ if rider_files:
                 if current_start is not None:
                     idle_periods.append((current_start, row['Time']))
                     current_start = None
-        if current_start is not None:
+
+        if current_start is not None and work_start <= current_start.time() <= work_end:
             idle_periods.append((current_start, df['Time'].iloc[-1]))
 
         idle_durations = [(end - start).total_seconds() / 60 for start, end in idle_periods]
