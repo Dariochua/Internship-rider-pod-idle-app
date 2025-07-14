@@ -10,8 +10,8 @@ st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
 This tool lets you upload Excel files and get:
-- Rider **POD tracking summary + bar chart**
-- Rider **idle time, mileage, and max speed summary + bar chart**
+- Rider **POD tracking summary**
+- Rider **idle time, mileage, and max speed summary**
 - Downloadable tables and **downloadable charts as PNG**
 
 ---
