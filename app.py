@@ -29,7 +29,7 @@ if pod_file:
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
+    if "POD Time" in df_pod.columns and "Assign To" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         # Get delivery date
@@ -43,7 +43,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign to").agg(
+        pod_summary = df_pod.groupby("Assign To").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -67,7 +67,7 @@ if pod_file:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
+        st.error("❌ Required columns 'Assign To' and 'POD Time' not found in this file.")
 
 # -----------------------------
 # Section 2: Idle Time Analysis
@@ -144,9 +144,6 @@ if rider_files:
 
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
 
-        st.subheader("📄 Idle Time Summary Table")
-        st.dataframe(summary_df)
-
         # Convert idle >15 mins (mins) to hours for chart
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
@@ -162,6 +159,12 @@ if rider_files:
         plt.xticks(rotation=45)
 
         st.pyplot(fig)
+
+        # Remove numeric hours column before display & export
+        summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
+
+        st.subheader("📄 Idle Time Summary Table")
+        st.dataframe(summary_df)
 
         # Convert to Excel
         output_idle = io.BytesIO()
