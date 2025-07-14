@@ -90,22 +90,9 @@ if pod_file:
 # -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
 
-# Session state to keep track
-if "uploaded_files" not in st.session_state:
-    st.session_state.uploaded_files = []
+rider_files = st.file_uploader("Upload multiple rider Excel files", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
 
-uploaded_files = st.file_uploader("Upload multiple rider Excel files", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
-
-if uploaded_files:
-    st.session_state.uploaded_files = uploaded_files
-
-if st.button("🗑️ Clear All Files"):
-    st.session_state.uploaded_files = []
-    st.rerun()
-
-if st.session_state.uploaded_files:
-    rider_files = st.session_state.uploaded_files
-
+if rider_files:
     summary = []
 
     for file in rider_files:
@@ -184,8 +171,8 @@ if st.session_state.uploaded_files:
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        # Idle chart
         summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
+
         fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
         bars_idle = ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
         ax_idle.set_title("Idle Time >15 mins per Rider (hours)")
@@ -197,8 +184,8 @@ if st.session_state.uploaded_files:
             ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
-        # Max speed chart
         summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
+
         fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
         bars_speed = ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
         ax_speed.set_title("Max Speed per Rider (km/h)")
@@ -210,9 +197,9 @@ if st.session_state.uploaded_files:
             ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
-        # Mileage chart
         summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
-        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))
+
+        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))  # Wider and taller figure
         bars_mileage = ax_mileage.bar(summary_df_sorted_mileage["Rider"], summary_df_sorted_mileage["Total mileage (km)"], color="purple")
         ax_mileage.set_title("Total Mileage per Rider (km)")
         ax_mileage.set_xlabel("Rider")
@@ -223,7 +210,6 @@ if st.session_state.uploaded_files:
             ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                                 xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
-        # Columns for charts
         col1, col2 = st.columns(2)
 
         with col1:
