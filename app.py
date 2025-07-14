@@ -11,9 +11,10 @@ st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
 This tool lets you upload Excel files and get:
-- ✅ Rider **POD tracking summary + bar chart**
-- ✅ Rider **idle time, mileage, and max speed summary + bar chart (only within 8:30 AM – 5:30 PM)**
-- ✅ Downloadable tables and **downloadable charts as PNG**
+- Rider **POD tracking summary**
+- Rider **idle time, mileage, and max speed summary**
+- Downloadable tables and **downloadable charts as PNG**
+- Idle periods counted only between 8:30 AM – 5:30 PM
 
 ---
 """)
@@ -63,7 +64,6 @@ if pod_file:
         ax_pod.set_ylabel("Total PODs")
         plt.xticks(rotation=60, ha='right')
 
-        # Add data labels
         for bar in bars_pod:
             height = bar.get_height()
             ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
@@ -71,7 +71,7 @@ if pod_file:
 
         st.pyplot(fig_pod)
 
-        # Save POD chart as image buffer
+        # Save POD chart
         pod_img_buf = io.BytesIO()
         fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
         pod_img_buf.seek(0)
@@ -83,7 +83,7 @@ if pod_file:
             mime="image/png"
         )
 
-        # Convert to Excel
+        # Excel download
         output_pod = io.BytesIO()
         with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
             pod_summary.to_excel(writer, index=False, sheet_name="POD Summary")
@@ -111,12 +111,8 @@ if rider_files:
     summary = []
 
     for file in rider_files:
-        # Extract date from filename
         date_match = re.search(r'\d{4}-\d{2}-\d{2}', file.name)
-        if date_match:
-            date_str = date_match.group(0)
-        else:
-            date_str = "unknown_date"
+        date_str = date_match.group(0) if date_match else "unknown_date"
 
         xl = pd.ExcelFile(file)
         rider_name = xl.sheet_names[0]
@@ -129,7 +125,6 @@ if rider_files:
         df['Time'] = pd.to_datetime(df['Time'], format='%I:%M:%S %p', errors='coerce')
         df['Idle'] = df['Mileage (km)'] == 0
 
-        # Define working hours
         work_start = datetime.time(8, 30)
         work_end = datetime.time(17, 30)
 
@@ -178,7 +173,6 @@ if rider_files:
     if summary:
         summary_df = pd.DataFrame(summary)
 
-        # Create formatted "X hr Y min" column for idle >15 mins
         def format_hours_mins(x):
             if x == 0 or pd.isna(x):
                 return "0 hr 0 min"
@@ -188,13 +182,10 @@ if rider_files:
 
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
 
-        # Convert idle >15 mins (mins) to hours for chart
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        # Sort for chart
         summary_df_sorted = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
 
-        # Create bar chart
         fig, ax = plt.subplots(figsize=(10, 6))
         bars = ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Idle time >15 mins (hrs)"], color="skyblue")
         ax.set_title("Idle Time >15 mins per Rider (hours)")
@@ -202,7 +193,6 @@ if rider_files:
         ax.set_ylabel("Idle Time >15 mins (hrs)")
         plt.xticks(rotation=60, ha='right')
 
-        # Add data labels
         for bar in bars:
             height = bar.get_height()
             ax.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
@@ -210,7 +200,6 @@ if rider_files:
 
         st.pyplot(fig)
 
-        # Save idle chart as image buffer
         idle_img_buf = io.BytesIO()
         fig.savefig(idle_img_buf, format='png', bbox_inches="tight")
         idle_img_buf.seek(0)
@@ -222,19 +211,44 @@ if rider_files:
             mime="image/png"
         )
 
-        # Remove numeric hours column before display & export
         summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
 
         st.subheader("📄 Idle Time Summary Table")
         st.dataframe(summary_df)
 
-        # Convert to Excel
+        # Max speed chart
+        summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
+
+        fig_speed, ax_speed = plt.subplots(figsize=(10, 6))
+        bars_speed = ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
+        ax_speed.set_title("Max Speed per Rider")
+        ax_speed.set_xlabel("Rider")
+        ax_speed.set_ylabel("Max Speed (km/h)")
+        plt.xticks(rotation=60, ha='right')
+
+        for bar in bars_speed:
+            height = bar.get_height()
+            ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+
+        st.pyplot(fig_speed)
+
+        speed_img_buf = io.BytesIO()
+        fig_speed.savefig(speed_img_buf, format='png', bbox_inches="tight")
+        speed_img_buf.seek(0)
+
+        st.download_button(
+            label="⬇️ Download Max Speed Chart (PNG)",
+            data=speed_img_buf,
+            file_name="max_speed_chart.png",
+            mime="image/png"
+        )
+
         output_idle = io.BytesIO()
         with pd.ExcelWriter(output_idle, engine='openpyxl') as writer:
             summary_df.to_excel(writer, index=False, sheet_name="Idle Summary")
         processed_idle = output_idle.getvalue()
 
-        # Use date from first file for filename
         output_date = summary[0]["Date"] if summary else "unknown_date"
         file_name_idle = f"idle_time_summary_{output_date}.xlsx"
 
