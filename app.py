@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import re
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
 
@@ -11,6 +12,8 @@ st.markdown("""
 This tool lets you upload Excel files and get:
 - ✅ Rider **POD tracking summary**
 - ✅ Rider **idle time, mileage, and max speed summary**
+- ✅ Idle time bar chart (converted to hours)
+
 ---
 """)
 
@@ -26,7 +29,7 @@ if pod_file:
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
+    if "POD Time" in df_pod.columns and "Assign To" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         # Get delivery date
@@ -40,7 +43,7 @@ if pod_file:
             delivery_date = "unknown_date"
 
         # Group and summarize
-        pod_summary = df_pod.groupby("Assign to").agg(
+        pod_summary = df_pod.groupby("Assign To").agg(
             Earliest_POD=("POD Time", "min"),
             Latest_POD=("POD Time", "max"),
             Total_PODs=("POD Time", "count")
@@ -133,6 +136,23 @@ if rider_files:
         st.subheader("📄 Idle Time Summary Table")
         st.dataframe(summary_df)
 
+        # Convert minutes to hours
+        summary_df["Total idle time (hrs)"] = summary_df["Total idle time (mins)"] / 60
+
+        # Sort for prettier plot
+        summary_df_sorted = summary_df.sort_values("Total idle time (hrs)", ascending=False)
+
+        # Create bar chart
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.bar(summary_df_sorted["Rider"], summary_df_sorted["Total idle time (hrs)"], color="skyblue")
+        ax.set_title("Total Idle Time per Rider (hours)")
+        ax.set_xlabel("Rider")
+        ax.set_ylabel("Idle Time (hrs)")
+        plt.xticks(rotation=45)
+
+        st.pyplot(fig)
+
+        # Convert to Excel
         output_idle = io.BytesIO()
         with pd.ExcelWriter(output_idle, engine='openpyxl') as writer:
             summary_df.to_excel(writer, index=False, sheet_name="Idle Summary")
