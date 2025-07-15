@@ -309,13 +309,13 @@ if trip_file and fuel_file:
         header_idx = raw[raw.iloc[:,0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
         df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
-        df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration","").astype(str).str.strip()
+        df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration",""").astype(str).str.strip()
         fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed", c, re.IGNORECASE)), None)
         dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled", c, re.IGNORECASE)), None)
         df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col,0), errors='coerce').fillna(0)
         df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col,0), errors='coerce').fillna(0)
 
-        # Merge
+        # Merge and fill missing registration
         df_all = pd.merge(
             df_trip,
             df_fuel,
@@ -323,15 +323,14 @@ if trip_file and fuel_file:
             right_on="Vehicle Registration",
             how="outer"
         )
-        # Default driver
+        df_all["Registration"] = df_all["Registration"].fillna(df_all["Vehicle Registration"])
+
+        # Default driver assignment and area-based overrides
         df_all["Driver"] = "Mohd Hairul"
-        # Conditional mapping by area
         df_all.loc[df_all["End Location"].str.contains("Punggol|Hougang", case=False, na=False), "Driver"] = "Abdul Rahman"
-        df_all.loc[df_all["End Location"].str.contains("Woodlands|Yishun", case=False, na=False), "Driver"] = "Mohd"
-        df_all.loc[df_all["End Location"].str.contains("Jurong East", case=False, na=False), "Driver"] = "Sugathan"
+        df_all.loc[df_all["End Location"].str.contains("Woodlands|Yishun|Jurong East", case=False, na=False), "Driver"] = "Sugathan"
         df_all.loc[df_all["End Location"].str.contains("Changi South", case=False, na=False), "Driver"] = "Mohd Hairul"
         df_all.loc[df_all["End Location"].str.contains("Pasir Panjang", case=False, na=False), "Driver"] = "Toh"
-        # Kallang except Pasir Panjang
         mask_kallang = df_all["End Location"].str.contains("Kallang", case=False, na=False) & ~df_all["End Location"].str.contains("Pasir Panjang", case=False, na=False)
         df_all.loc[mask_kallang, "Driver"] = "Masari"
 
@@ -343,15 +342,22 @@ if trip_file and fuel_file:
         st.subheader("📄 Cartrack Summary Report")
         st.dataframe(summary_df)
 
+        # Rider ↔ Car mapping
+        mapping = summary_df[["Driver","Registration"]].drop_duplicates().sort_values("Driver")
+        st.subheader("📝 Rider ↔ Car Mapping")
+        st.dataframe(mapping)
+
         # Export
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             summary_df.to_excel(writer, index=False, sheet_name="Summary")
+            mapping.to_excel(writer, index=False, sheet_name="Mapping")
         st.download_button(
             "⬇️ Download Cartrack Summary Excel",
             buf.getvalue(),
             "cartrack_summary_report.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
     except Exception as e:
         st.error(f"❌ Processing error: {e}")
