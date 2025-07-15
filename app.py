@@ -285,82 +285,96 @@ if rider_files:
 
 st.header("🚗 Cartrack Summary")
 
-trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls"], key="trip")
-fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls"], key="fuel")
+# Upload files
+trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls", "csv"], key="trip")
+fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls", "csv"], key="fuel")
 
 if trip_file and fuel_file:
     try:
-        # Read fuel report first, fix header row
-        df_fuel = pd.read_excel(fuel_file, skiprows=12)
-        if "Vehicle Registration" not in df_fuel.columns:
-            st.error(f"❌ Column 'Vehicle Registration' not found in Fuel Report. Columns: {df_fuel.columns.tolist()}")
+        # --- Read trip report ---
+        if trip_file.name.endswith(".csv"):
+            df_trip = pd.read_csv(trip_file)
         else:
-            df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
+            df_trip = pd.read_excel(trip_file, skiprows=10)  # Adjust skiprows if needed
 
-            # Read Trip Report raw to extract registration
-            raw_trip = pd.read_excel(trip_file, header=None)
+        # --- Read fuel report ---
+        if fuel_file.name.endswith(".csv"):
+            df_fuel = pd.read_csv(fuel_file)
+        else:
+            df_fuel = pd.read_excel(fuel_file, skiprows=14)  # Adjust skiprows if needed
 
-            # Find "Registration:" row
-            reg_row = raw_trip[raw_trip[0] == "Registration:"].index
-            if not reg_row.empty:
-                reg_value = raw_trip.iloc[reg_row[0], 1]
-                reg_value = str(reg_value).strip()
-            else:
-                reg_value = "Unknown"
+        # --- Clean column names ---
+        df_trip.columns = df_trip.columns.str.strip()
+        df_fuel.columns = df_fuel.columns.str.strip()
 
-            # Now read data table from Trip Report (data usually starts at row 17 in your file)
-            df_trip = pd.read_excel(trip_file, skiprows=15)
-            df_trip["Registration"] = reg_value  # add registration column
+        # --- Check columns ---
+        if "Registration" not in df_trip.columns:
+            st.error(f"❌ Column 'Registration' not found in Trip Report. Columns: {list(df_trip.columns)}")
+            st.stop()
 
-            # Merge
-            df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
+        if "Vehicle Registration" not in df_fuel.columns:
+            st.error(f"❌ Column 'Vehicle Registration' not found in Fuel Report. Columns: {list(df_fuel.columns)}")
+            st.stop()
 
-            # Add driver assignment logic
-            df_summary["Driver"] = "Mohd Hairul"
-            if "End Location" in df_summary.columns:
-                df_summary.loc[df_summary["End Location"].str.contains("Ang Mo Kio", case=False, na=False), "Driver"] = "Abdul Rahman"
-                df_summary.loc[df_summary["End Location"].str.contains("Hougang|Sengkang", case=False, na=False), "Driver"] = "Abdul Rahman"
+        # --- Clean string columns before merge ---
+        df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
+        df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
-            # Identify "Did Not Move"
-            if "Trip Distance" in df_summary.columns:
-                df_summary["Did Not Move"] = df_summary["Trip Distance"].fillna(0) == 0
-            else:
-                df_summary["Did Not Move"] = False
+        # --- Merge ---
+        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
-            # Show table
-            st.dataframe(df_summary)
+        # --- Assign drivers based on End Location logic ---
+        df_summary["Driver"] = "Mohd Hairul"
+        df_summary.loc[df_summary["End Location"].str.contains("Ang Mo Kio", case=False, na=False), "Driver"] = "Abdul Rahman"
+        df_summary.loc[df_summary["End Location"].str.contains("Hougang|Sengkang", case=False, na=False), "Driver"] = "Abdul Rahman"
 
-            # Fuel chart
-            driver_fuel = df_summary.groupby("Driver")["Fuel Consumed (litres)"].sum().reset_index()
+        # --- Convert Fuel Consumed ---
+        if "Fuel Consumed" in df_summary.columns:
+            df_summary["Fuel Consumed"] = pd.to_numeric(df_summary["Fuel Consumed"], errors='coerce').fillna(0)
+        else:
+            st.error("❌ Column 'Fuel Consumed' not found after merge.")
+            st.stop()
 
-            fig, ax = plt.subplots()
-            ax.bar(driver_fuel["Driver"], driver_fuel["Fuel Consumed (litres)"], color="orange")
-            ax.set_title("Fuel Consumed per Driver (litres)")
-            ax.set_ylabel("Litres")
-            st.pyplot(fig)
+        # --- Charts ---
+        # Fuel efficiency chart
+        fuel_per_driver = df_summary.groupby("Driver")["Fuel Consumed"].sum().reset_index()
 
-            # Speeding chart
-            if "# of Events" in df_summary.columns:
-                driver_speeding = df_summary.groupby("Driver")["# of Events"].sum().reset_index()
+        fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
+        bars = ax_fuel.bar(fuel_per_driver["Driver"], fuel_per_driver["Fuel Consumed"], color="orange")
+        ax_fuel.set_title("Total Fuel Consumed per Driver (litres)")
+        ax_fuel.set_ylabel("Litres")
+        plt.xticks(rotation=45)
+        for bar in bars:
+            height = bar.get_height()
+            ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                             xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        st.pyplot(fig_fuel)
 
-                fig2, ax2 = plt.subplots()
-                ax2.bar(driver_speeding["Driver"], driver_speeding["# of Events"], color="red")
-                ax2.set_title("Speeding Events per Driver")
-                ax2.set_ylabel("Events")
-                st.pyplot(fig2)
+        fuel_img_buf = io.BytesIO()
+        fig_fuel.savefig(fuel_img_buf, format='png', bbox_inches="tight")
+        fuel_img_buf.seek(0)
+        st.download_button("⬇️ Download Fuel Chart (PNG)", fuel_img_buf, "fuel_chart.png", "image/png")
 
-            # Downloadable Excel
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
-            processed_data = output.getvalue()
+        # --- Check for vehicles that didn't move ---
+        df_summary["Moved"] = df_summary["Trip Distance"].fillna(0) > 0
+        df_summary["Vehicle Status"] = df_summary["Moved"].apply(lambda x: "Moved" if x else "Did not move")
 
-            st.download_button(
-                "⬇️ Download Cartrack Summary Excel",
-                processed_data,
-                "cartrack_summary.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        # --- Show and download table ---
+        st.subheader("📄 Cartrack Summary Table")
+        st.dataframe(df_summary)
+
+        # Excel download
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
+        processed_data = output.getvalue()
+
+        st.download_button(
+            "⬇️ Download Cartrack Summary Excel",
+            processed_data,
+            "cartrack_summary.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     except Exception as e:
         st.error(f"❌ Processing error: {e}")
