@@ -301,7 +301,7 @@ if trip_file and fuel_file:
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
         df_trip["Registration"] = registration
-        df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance",0), errors='coerce').fillna(0)
+        df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors='coerce').fillna(0)
 
         # Read Fuel report
         xl_fuel = pd.ExcelFile(fuel_file)
@@ -309,11 +309,12 @@ if trip_file and fuel_file:
         header_idx = raw[raw.iloc[:,0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
         df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
-        df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration",""").astype(str).str.strip()
+        # Fixed unterminated string literal here
+        df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration", "").astype(str).str.strip()
         fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed", c, re.IGNORECASE)), None)
         dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled", c, re.IGNORECASE)), None)
-        df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col,0), errors='coerce').fillna(0)
-        df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col,0), errors='coerce').fillna(0)
+        df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col, 0), errors='coerce').fillna(0)
+        df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col, 0), errors='coerce').fillna(0)
 
         # Merge and fill missing registration
         df_all = pd.merge(
@@ -336,8 +337,8 @@ if trip_file and fuel_file:
 
         # Summarize per vehicle & driver
         summary_df = df_all.groupby(["Registration","Driver"], as_index=False).agg(
-            Total_Mileage_km=("Trip Distance","sum"),
-            Total_Fuel_Litres=("Fuel Consumed (litres)","sum")
+            Total_Mileage_km=("Trip Distance", "sum"),
+            Total_Fuel_Litres=("Fuel Consumed (litres)", "sum")
         )
         st.subheader("📄 Cartrack Summary Report")
         st.dataframe(summary_df)
