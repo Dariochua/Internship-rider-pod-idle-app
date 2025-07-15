@@ -291,11 +291,22 @@ cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls",
 cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="fuel")
 
 if cartrack_trip_file and cartrack_fuel_file:
-    # Read Trip Report directly with proper headers
-    df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0)
-    df_trip.columns = df_trip.columns.str.strip()
+    # Read trip file raw
+    df_trip_all = pd.read_excel(cartrack_trip_file, sheet_name=0, header=None)
+    
+    # Extract registration value
+    reg_row = df_trip_all[df_trip_all.iloc[:, 0] == "Registration:"].index[0]
+    registration_value = df_trip_all.iloc[reg_row, 1]
+    registration_value = str(registration_value).strip()
 
-    # Read Fuel Report directly
+    # Find header row ("Driver")
+    header_row = df_trip_all[df_trip_all.iloc[:, 0] == "Driver"].index[0]
+    df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, header=header_row)
+
+    # Add Registration column
+    df_trip["Registration"] = registration_value
+
+    # Read fuel file
     df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0)
     df_fuel.columns = df_fuel.columns.str.strip()
 
