@@ -33,23 +33,31 @@ if pod_file:
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns and "Weight" in df_pod.columns:
-        df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
+    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns and "Weight" in df_pod.columns and "Delivery Date" in df_pod.columns:
+        try:
+            df_pod["Delivery Date"] = pd.to_datetime(df_pod["Delivery Date"], errors='coerce')
+            df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce').dt.time
 
-        if "Delivery Date" in df_pod.columns:
-            try:
-                df_pod["Delivery Date"] = pd.to_datetime(df_pod["Delivery Date"], errors='coerce')
-                delivery_date_mode = df_pod["Delivery Date"].mode()[0]
-                delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
-            except:
-                delivery_date = "unknown_date"
-        else:
+            # Combine Delivery Date and POD Time
+            df_pod["POD DateTime"] = df_pod.apply(
+                lambda row: datetime.datetime.combine(row["Delivery Date"], row["POD Time"]) if pd.notnull(row["Delivery Date"]) and pd.notnull(row["POD Time"]) else pd.NaT,
+                axis=1
+            )
+
+            # Use most common delivery date for file name
+            delivery_date_mode = df_pod["Delivery Date"].mode()[0]
+            delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
+        except:
             delivery_date = "unknown_date"
+    else:
+        st.error("❌ Required columns 'Assign to', 'POD Time', 'Weight', or 'Delivery Date' not found.")
+        delivery_date = "unknown_date"
 
+    if delivery_date != "unknown_date":
         pod_summary = df_pod.groupby("Assign to").agg(
-            Earliest_POD=("POD Time", "min"),
-            Latest_POD=("POD Time", "max"),
-            Total_PODs=("POD Time", "count"),
+            Earliest_POD=("POD DateTime", "min"),
+            Latest_POD=("POD DateTime", "max"),
+            Total_PODs=("POD DateTime", "count"),
             Total_Weight=("Weight", "sum")
         ).reset_index()
 
@@ -102,9 +110,6 @@ if pod_file:
         file_name_pod = f"pod_summary_{delivery_date}.xlsx"
 
         st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    else:
-        st.error("❌ Required columns 'Assign to', 'POD Time', or 'Weight' not found.")
-        
 
 # -----------------------------
 # Section 2: Idle Time Analysis
