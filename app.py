@@ -28,10 +28,12 @@ pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx
 
 if pod_file:
     df_pod = pd.read_excel(pod_file)
+    df_pod.columns = df_pod.columns.str.strip()  # Clean header spaces
+
     st.success("✅ POD file uploaded successfully!")
     st.write("Columns detected:", df_pod.columns.tolist())
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns:
+    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns and "Weight" in df_pod.columns:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         if "Delivery Date" in df_pod.columns:
@@ -43,67 +45,65 @@ if pod_file:
         else:
             delivery_date = "unknown_date"
 
-        if "Weight" not in df_pod.columns:
-            st.error("❌ Column 'Weight' not found in this file.")
-        else:
-            pod_summary = df_pod.groupby("Assign to").agg(
-                Earliest_POD=("POD Time", "min"),
-                Latest_POD=("POD Time", "max"),
-                Total_PODs=("POD Time", "count"),
-                Total_Weight=("Weight", "sum")
-            ).reset_index()
+        pod_summary = df_pod.groupby("Assign to").agg(
+            Earliest_POD=("POD Time", "min"),
+            Latest_POD=("POD Time", "max"),
+            Total_PODs=("POD Time", "count"),
+            Total_Weight=("Weight", "sum")
+        ).reset_index()
 
-            st.subheader("📄 POD Summary Table")
-            st.dataframe(pod_summary)
+        st.subheader("📄 POD Summary Table")
+        st.dataframe(pod_summary)
 
-            # POD count chart
-            pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
-            fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
-            bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
-            ax_pod.set_title("Total PODs per Rider")
-            ax_pod.set_xlabel("Rider")
-            ax_pod.set_ylabel("Total PODs")
-            plt.xticks(rotation=60, ha='right')
-            for bar in bars_pod:
-                height = bar.get_height()
-                ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-            st.pyplot(fig_pod)
+        # POD count chart
+        pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
+        fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
+        bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
+        ax_pod.set_title("Total PODs per Rider")
+        ax_pod.set_xlabel("Rider")
+        ax_pod.set_ylabel("Total PODs")
+        plt.xticks(rotation=60, ha='right')
+        for bar in bars_pod:
+            height = bar.get_height()
+            ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        st.pyplot(fig_pod)
 
-            pod_img_buf = io.BytesIO()
-            fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
-            pod_img_buf.seek(0)
-            st.download_button("⬇️ Download POD Chart (PNG)", pod_img_buf, "pod_chart.png", "image/png")
+        pod_img_buf = io.BytesIO()
+        fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
+        pod_img_buf.seek(0)
+        st.download_button("⬇️ Download POD Chart (PNG)", pod_img_buf, "pod_chart.png", "image/png")
 
-            # Total weight chart
-            pod_summary_sorted_weight = pod_summary.sort_values("Total_Weight", ascending=False)
-            fig_weight, ax_weight = plt.subplots(figsize=(8, 5))
-            bars_weight = ax_weight.bar(pod_summary_sorted_weight["Assign to"], pod_summary_sorted_weight["Total_Weight"], color="blue")
-            ax_weight.set_title("Total Weight per Rider")
-            ax_weight.set_xlabel("Rider")
-            ax_weight.set_ylabel("Total Weight")
-            plt.xticks(rotation=60, ha='right')
-            for bar in bars_weight:
-                height = bar.get_height()
-                ax_weight.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                   xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-            st.pyplot(fig_weight)
+        # Weight chart
+        pod_summary_sorted_weight = pod_summary.sort_values("Total_Weight", ascending=False)
+        fig_weight, ax_weight = plt.subplots(figsize=(8, 5))
+        bars_weight = ax_weight.bar(pod_summary_sorted_weight["Assign to"], pod_summary_sorted_weight["Total_Weight"], color="blue")
+        ax_weight.set_title("Total Weight per Rider")
+        ax_weight.set_xlabel("Rider")
+        ax_weight.set_ylabel("Total Weight")
+        plt.xticks(rotation=60, ha='right')
+        for bar in bars_weight:
+            height = bar.get_height()
+            ax_weight.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        st.pyplot(fig_weight)
 
-            weight_img_buf = io.BytesIO()
-            fig_weight.savefig(weight_img_buf, format='png', bbox_inches="tight")
-            weight_img_buf.seek(0)
-            st.download_button("⬇️ Download Weight Chart (PNG)", weight_img_buf, "weight_chart.png", "image/png")
+        weight_img_buf = io.BytesIO()
+        fig_weight.savefig(weight_img_buf, format='png', bbox_inches="tight")
+        weight_img_buf.seek(0)
+        st.download_button("⬇️ Download Weight Chart (PNG)", weight_img_buf, "weight_chart.png", "image/png")
 
-            output_pod = io.BytesIO()
-            with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
-                pod_summary.to_excel(writer, index=False, sheet_name="POD Summary")
-            processed_pod = output_pod.getvalue()
+        output_pod = io.BytesIO()
+        with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
+            pod_summary.to_excel(writer, index=False, sheet_name="POD Summary")
+        processed_pod = output_pod.getvalue()
 
-            file_name_pod = f"pod_summary_{delivery_date}.xlsx"
+        file_name_pod = f"pod_summary_{delivery_date}.xlsx"
 
-            st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
-        st.error("❌ Required columns 'Assign to' and 'POD Time' not found in this file.")
+        st.error("❌ Required columns 'Assign to', 'POD Time', or 'Weight' not found.")
+        
 
 # -----------------------------
 # Section 2: Idle Time Analysis
