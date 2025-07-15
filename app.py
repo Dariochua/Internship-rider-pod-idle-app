@@ -284,9 +284,8 @@ if rider_files:
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
-# Section 3: Cartrack Summary (Enhanced)
+# Section 3: Cartrack Summary (Fixed Aggregation)
 # -----------------------------
-
 st.header("🚗 Cartrack Summary")
 
 trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls"], key="trip")
@@ -298,12 +297,13 @@ if trip_file and fuel_file:
         xl_trip = pd.ExcelFile(trip_file)
         meta = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
         reg_row = meta[meta.iloc[:, 0].astype(str).str.contains("Registration", na=False)]
+        registration = None
         try:
             registration = str(reg_row.iloc[0, 1]).strip()
-        except Exception:
-            registration = None
+        except:
+            pass
 
-        # --- Read trip data ---
+        # --- Read full trip data ---
         raw_trip = xl_trip.parse(xl_trip.sheet_names[0], header=None)
         start_idx = raw_trip[raw_trip.iloc[:, 0] == "Driver"].index[0]
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
@@ -312,12 +312,9 @@ if trip_file and fuel_file:
         df_trip["Registration"] = registration
         df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors="coerce").fillna(0)
 
-        # Extract speeding events if present
+        # Extract speeding if available
         speed_col = next((c for c in df_trip.columns if re.match(r"Speeding", c, re.IGNORECASE)), None)
-        if speed_col:
-            df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col, 0), errors="coerce").fillna(0)
-        else:
-            df_trip["Speeding_Count"] = 0
+        df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col, 0), errors="coerce").fillna(0) if speed_col else 0
 
         # --- Read Fuel Efficiency data ---
         xl_fuel = pd.ExcelFile(fuel_file)
@@ -331,65 +328,69 @@ if trip_file and fuel_file:
         df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col, 0), errors="coerce").fillna(0)
         df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col, 0), errors="coerce").fillna(0)
 
-        # --- Merge Trip & Fuel data ---
+        # --- Pre-aggregate trip and fuel separately ---
+        trip_agg = df_trip.groupby("Registration", as_index=False).agg(
+            Total_Trip_Distance_km=("Trip Distance", "sum"),
+            Total_Speeding_Count=("Speeding_Count", "sum")
+        )
+        fuel_agg = (
+            df_fuel.groupby("Vehicle Registration", as_index=False)
+                  .agg(
+                      Total_Fuel_Litres=("Fuel Consumed (litres)", "sum"),
+                      Total_Distance_Travelled_km=("Distance Travelled (km)", "sum")
+                  )
+                  .rename(columns={"Vehicle Registration": "Registration"})
+        )
+        df_agg = pd.merge(trip_agg, fuel_agg, on="Registration", how="outer").fillna(0)
+
+        # --- Determine driver for each registration ---
+        # Build helper df for first non-null TripDriver and End Location
+        xl_trip_full = xl_trip.parse(xl_trip.sheet_names[0], header=None)
         df_all = pd.merge(
-            df_trip,
+            xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx),
             df_fuel,
             left_on="Registration",
             right_on="Vehicle Registration",
             how="outer"
         )
-        df_all["Registration"] = df_all["Registration"].fillna(df_all["Vehicle Registration"])
-
-        # Vehicle-to-driver overrides
+        df_all.columns = df_all.columns.str.strip()
+        df_all["Registration"] = df_all["Registration"].fillna(df_all.get("Vehicle Registration", ""))
+        # Reuse assign_driver logic with overrides & location rules
         override_map = {
-            "GBB933E": "Abdul Rahman",
-            "GBB933Z": "Mohd",
-            "GBC8305D": "Sugathan",
-            "GBC9338C": "Toh",
-            "GX9339E": "Masari",
-            "GY933T": "Mohd Hairul",
-            "GBB933X": "Unknown"
+            "GBB933E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
+            "GBC9338C": "Toh", "GX9339E": "Masari", "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
         }
-
         def assign_driver(row):
             td = row.get("TripDriver")
-            if isinstance(td, str) and td.strip():
-                return td
+            if isinstance(td, str) and td.strip(): return td
             reg = row.get("Registration", "")
-            if reg in override_map:
-                return override_map[reg]
+            if reg in override_map: return override_map[reg]
             loc = str(row.get("End Location", "") or "")
-            if re.search(r"Punggol|Hougang", loc, re.IGNORECASE):
-                return "Abdul Rahman"
-            if re.search(r"Woodlands|Yishun|Jurong East", loc, re.IGNORECASE):
-                return "Sugathan"
-            if re.search(r"Changi South", loc, re.IGNORECASE):
-                return "Mohd"
-            if re.search(r"Pasir Panjang", loc, re.IGNORECASE):
-                return "Toh"
-            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE):
-                return "Masari"
+            if re.search(r"Punggol|Hougang", loc): return "Abdul Rahman"
+            if re.search(r"Woodlands|Yishun|Jurong East", loc): return "Sugathan"
+            if re.search(r"Changi South", loc): return "Mohd"
+            if re.search(r"Pasir Panjang", loc): return "Toh"
+            if re.search(r"Kallang", loc) and not re.search(r"Pasir Panjang", loc): return "Masari"
             return "Unknown"
-
-        df_all["Driver"] = df_all.apply(assign_driver, axis=1)
+        reg_info = (
+            df_all.groupby("Registration", as_index=False)
+                  .agg(TripDriver=("TripDriver", lambda x: next((v for v in x if isinstance(v, str) and v), "")),
+                       EndLocation=("End Location", lambda x: next((v for v in x if isinstance(v, str) and v), "")))
+        )
+        reg_info["Driver"] = reg_info.apply(assign_driver, axis=1)
 
         # --- Produce mapping table ---
-        mapping = (
-            df_all[["Registration", "Driver"]]
-              .drop_duplicates()
-              .sort_values(["Driver", "Registration"])
-        )
+        mapping = reg_info[["Registration", "Driver"]].drop_duplicates().sort_values(["Driver", "Registration"])
         st.subheader("📝 Rider ↔ Vehicle Mapping")
         st.dataframe(mapping)
 
-        # --- Summarize totals per rider ---
-        summary = df_all.groupby("Driver", as_index=False).agg(
-            Total_Speeding_Count=("Speeding_Count", "sum"),
-            Total_Mileage_km=("Trip Distance", "sum"),
-            Total_Fuel_Litres=("Fuel Consumed (litres)", "sum")
+        # --- Build final summary by driver ---
+        df_summary = pd.merge(mapping, df_agg, on="Registration", how="right").fillna(0)
+        summary = df_summary.groupby("Driver", as_index=False).agg(
+            Total_Speeding_Count=("Total_Speeding_Count", "sum"),
+            Total_Mileage_km=("Total_Trip_Distance_km", "sum"),
+            Total_Fuel_Litres=("Total_Fuel_Litres", "sum")
         )
-        # Calculate efficiency
         summary["Fuel_Efficiency (km/l)"] = summary.apply(
             lambda r: r["Total_Mileage_km"]/r["Total_Fuel_Litres"] if r["Total_Fuel_Litres"]>0 else None,
             axis=1
