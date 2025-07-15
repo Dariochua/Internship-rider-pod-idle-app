@@ -296,20 +296,21 @@ if trip_file and fuel_file:
         reg_row = meta[meta.iloc[:,0].astype(str).str.contains("Registration", na=False)]
         registration = str(reg_row.iloc[0,1]).strip() if not reg_row.empty else None
 
-        data = xl_trip.parse(xl_trip.sheet_names[0], header=None)
-        start_idx = data[data.iloc[:,0]=="Driver"].index[0]
+        raw_trip = xl_trip.parse(xl_trip.sheet_names[0], header=None)
+        start_idx = raw_trip[raw_trip.iloc[:,0]=="Driver"].index[0]
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
+        # Preserve original driver from trip sheet
+        df_trip.rename(columns={"Driver": "TripDriver"}, inplace=True)
         df_trip["Registration"] = registration
         df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors='coerce').fillna(0)
 
-        # Read Fuel report
+        # Read Fuel Efficiency report
         xl_fuel = pd.ExcelFile(fuel_file)
-        raw = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
-        header_idx = raw[raw.iloc[:,0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
+        raw_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
+        header_idx = raw_fuel[raw_fuel.iloc[:,0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
         df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
-        # Fixed unterminated string literal here
         df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration", "").astype(str).str.strip()
         fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed", c, re.IGNORECASE)), None)
         dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled", c, re.IGNORECASE)), None)
@@ -326,14 +327,39 @@ if trip_file and fuel_file:
         )
         df_all["Registration"] = df_all["Registration"].fillna(df_all["Vehicle Registration"])
 
-        # Default driver assignment and area-based overrides
-        df_all["Driver"] = "Mohd Hairul"
-        df_all.loc[df_all["End Location"].str.contains("Punggol|Hougang", case=False, na=False), "Driver"] = "Abdul Rahman"
-        df_all.loc[df_all["End Location"].str.contains("Woodlands|Yishun|Jurong East", case=False, na=False), "Driver"] = "Sugathan"
-        df_all.loc[df_all["End Location"].str.contains("Changi South", case=False, na=False), "Driver"] = "Mohd Hairul"
-        df_all.loc[df_all["End Location"].str.contains("Pasir Panjang", case=False, na=False), "Driver"] = "Toh"
-        mask_kallang = df_all["End Location"].str.contains("Kallang", case=False, na=False) & ~df_all["End Location"].str.contains("Pasir Panjang", case=False, na=False)
-        df_all.loc[mask_kallang, "Driver"] = "Masari"
+        # Override map for specific plates
+        override_map = {
+            "GBB933E": "Abdul Rahman",
+            "GBB933Z": "Mohd Hairul",
+            "GBC8305D": "Sugathan",
+            "GBC9338C": "Toh",
+            "GX9339E": "Masari",
+            "GY933T": "Mohd Hairul",
+            "GBB933X": "Unknown"
+        }
+
+        # Function to assign driver priority: TripDriver > override_map > area rules > default
+        def assign_driver(row):
+            td = row.get("TripDriver")
+            if pd.notna(td) and td != "":
+                return td
+            reg = row.get("Registration", "")
+            if reg in override_map:
+                return override_map[reg]
+            loc = row.get("End Location", "") or ""
+            if re.search(r"Punggol|Hougang", loc, re.IGNORECASE):
+                return "Abdul Rahman"
+            if re.search(r"Woodlands|Yishun|Jurong East", loc, re.IGNORECASE):
+                return "Sugathan"
+            if re.search(r"Changi South", loc, re.IGNORECASE):
+                return "Mohd Hairul"
+            if re.search(r"Pasir Panjang", loc, re.IGNORECASE):
+                return "Toh"
+            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE):
+                return "Masari"
+            return "Mohd Hairul"
+
+        df_all["Driver"] = df_all.apply(assign_driver, axis=1)
 
         # Summarize per vehicle & driver
         summary_df = df_all.groupby(["Registration","Driver"], as_index=False).agg(
