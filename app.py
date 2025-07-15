@@ -334,6 +334,9 @@ if trip_file and fuel_file:
             how="left"
         )
 
+        # Remove any truly duplicate-named columns (keeps first occurrence)
+        df_summary = df_summary.loc[:, ~df_summary.columns.duplicated()]
+
         # Assign drivers based on End Location
         df_summary["Driver"] = "Mohd Hairul"
         df_summary.loc[
