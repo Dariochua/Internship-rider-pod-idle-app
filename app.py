@@ -7,6 +7,7 @@ import datetime
 import difflib
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
 
