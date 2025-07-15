@@ -205,6 +205,8 @@ if rider_files:
 
     if summary:
         summary_df = pd.DataFrame(summary)
+        output_date = date_str if date_str != "unknown_date" else "unknown_date"
+        file_name_idle = f"idle_summary_{output_date}.xlsx"
 
         def format_hours_mins(x):
             if x == 0 or pd.isna(x):
@@ -303,7 +305,7 @@ if rider_files:
                 date_from_filename = match.group(0)
                 break
 
-        file_name_idle = f"idle_summary_{date_from_filename}.xlsx"
+        file_name_idle = f"idle_summary_{output_date}.xlsx"
         st.download_button("⬇️ Download Idle Summary Excel", idle_excel_buf, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
