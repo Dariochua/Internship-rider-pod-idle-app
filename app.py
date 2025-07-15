@@ -4,6 +4,7 @@ import io
 import re
 import matplotlib.pyplot as plt
 import datetime
+import difflib
 
 st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
 
@@ -282,122 +283,109 @@ if rider_files:
 
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# -----------------------------
-# Section 3: Cartrack Summary
-# -----------------------------
 st.header("🚗 Cartrack Summary")
 
-cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls", "xlsx"], key="trip")
-cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="fuel")
+trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls", "xlsx"], key="trip")
+fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="fuel")
 
-if cartrack_trip_file and cartrack_fuel_file:
+if trip_file and fuel_file:
     try:
-        # Read trip report (skip top rows to get trip data)
-        df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, skiprows=17)
-        reg_df = pd.read_excel(cartrack_trip_file, sheet_name=0, skiprows=10, nrows=1, usecols="A")
-        vehicle_reg = reg_df.columns[0].split(":")[1].strip() if ":" in reg_df.columns[0] else "UNKNOWN"
-        df_trip["Registration"] = vehicle_reg
+        # Read files
+        df_trip = pd.read_excel(trip_file, skiprows=12)
+        df_fuel = pd.read_excel(fuel_file, skiprows=13)
 
-        # Read fuel report
-        df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0, skiprows=13)
-
-        # Clean columns by stripping whitespace
+        # Strip column names
         df_trip.columns = df_trip.columns.str.strip()
         df_fuel.columns = df_fuel.columns.str.strip()
 
-        # Debug columns print
-        # st.write("Trip columns:", df_trip.columns.tolist())
-        # st.write("Fuel columns:", df_fuel.columns.tolist())
+        # Find registration columns dynamically
+        trip_cols = df_trip.columns.tolist()
+        fuel_cols = df_fuel.columns.tolist()
 
-        # Fix possible hidden characters
-        df_fuel.columns = df_fuel.columns.str.replace('\u200b', '', regex=True)
-        df_trip.columns = df_trip.columns.str.replace('\u200b', '', regex=True)
+        reg_col_trip = difflib.get_close_matches("Registration", trip_cols, n=1)
+        reg_col_fuel = difflib.get_close_matches("Vehicle Registration", fuel_cols, n=1)
 
-        # Check final column names
-        if "Vehicle Registration" not in df_fuel.columns:
-            raise KeyError("Column 'Vehicle Registration' not found after cleaning.")
+        if reg_col_trip:
+            reg_col_trip = reg_col_trip[0]
+        else:
+            st.error(f"❌ 'Registration' column not found in Trip Report. Columns: {trip_cols}")
+            st.stop()
 
-        df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
-        df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
+        if reg_col_fuel:
+            reg_col_fuel = reg_col_fuel[0]
+        else:
+            st.error(f"❌ 'Vehicle Registration' column not found in Fuel Report. Columns: {fuel_cols}")
+            st.stop()
+
+        # Clean columns
+        df_trip[reg_col_trip] = df_trip[reg_col_trip].astype(str).str.strip()
+        df_fuel[reg_col_fuel] = df_fuel[reg_col_fuel].astype(str).str.strip()
 
         # Merge
-        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
+        df_summary = pd.merge(df_trip, df_fuel, left_on=reg_col_trip, right_on=reg_col_fuel, how="left")
 
-        # Convert End Location to string
-        df_summary["End Location"] = df_summary["End Location"].astype(str)
-
+        # Assign driver logic
         def assign_driver(row):
-            if isinstance(row["Driver"], str) and row["Driver"].strip():
-                return row["Driver"]
-            end_loc = row["End Location"]
+            end_loc = str(row["End Location"])
             if "Ang Mo Kio" in end_loc:
                 return "Abdul Rahman"
             elif "Hougang" in end_loc or "Sengkang" in end_loc:
                 return "Abdul Rahman"
+            elif pd.isna(row[reg_col_trip]) or row["Trip Distance"] == 0:
+                return "Mohd Hairul"
             else:
                 return "Mohd Hairul"
 
-        df_summary["Final Driver"] = df_summary.apply(assign_driver, axis=1)
+        df_summary["Assigned Driver"] = df_summary.apply(assign_driver, axis=1)
 
-        # Flag vehicles that did not move
-        df_summary["Vehicle Moved?"] = df_summary["Trip Distance"].apply(lambda x: "No (Did not move)" if x == 0 or pd.isna(x) else "Yes")
+        # No movement flag
+        df_summary["No Movement"] = df_summary["Trip Distance"].apply(lambda x: x == 0)
 
-        # Plot Fuel Consumed per driver
-        fuel_df = df_summary.groupby("Final Driver")["Fuel Consumed (litres)"].sum().reset_index()
+        # Prepare summary table
+        summary_table = df_summary[
+            ["Assigned Driver", reg_col_trip, "Trip Distance", "Fuel Consumed", "Fuel Efficiency", "# of Events", "Max. Speed"]
+        ].copy()
 
-        fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
-        bars = ax_fuel.bar(fuel_df["Final Driver"], fuel_df["Fuel Consumed (litres)"], color="teal")
-        ax_fuel.set_title("Fuel Consumed per Driver (litres)")
-        ax_fuel.set_xlabel("Driver")
+        st.subheader("📄 Cartrack Summary Table")
+        st.dataframe(summary_table)
+
+        # Charts: Fuel Consumed
+        st.subheader("⛽ Fuel Consumed per Driver")
+        fuel_chart = summary_table.groupby("Assigned Driver")["Fuel Consumed"].sum()
+
+        fig_fuel, ax_fuel = plt.subplots(figsize=(6, 4))
+        fuel_chart.plot(kind="bar", color="orange", ax=ax_fuel)
         ax_fuel.set_ylabel("Fuel Consumed (litres)")
-        plt.xticks(rotation=45, ha='right')
-        for bar in bars:
-            height = bar.get_height()
-            ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                             xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        ax_fuel.set_title("Fuel Consumed per Driver")
         st.pyplot(fig_fuel)
 
-        # Plot Trip Distance per driver
-        mileage_df = df_summary.groupby("Final Driver")["Trip Distance"].sum().reset_index()
+        # Charts: Trip Distance
+        st.subheader("🛣️ Total Trip Distance per Driver")
+        distance_chart = summary_table.groupby("Assigned Driver")["Trip Distance"].sum()
 
-        fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
-        bars = ax_mileage.bar(mileage_df["Final Driver"], mileage_df["Trip Distance"], color="purple")
-        ax_mileage.set_title("Total Trip Distance per Driver (km)")
-        ax_mileage.set_xlabel("Driver")
-        ax_mileage.set_ylabel("Trip Distance (km)")
-        plt.xticks(rotation=45, ha='right')
-        for bar in bars:
-            height = bar.get_height()
-            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_mileage)
+        fig_dist, ax_dist = plt.subplots(figsize=(6, 4))
+        distance_chart.plot(kind="bar", color="purple", ax=ax_dist)
+        ax_dist.set_ylabel("Distance (km)")
+        ax_dist.set_title("Total Trip Distance per Driver")
+        st.pyplot(fig_dist)
 
-        # Plot Speeding Incidents per driver
-        speed_df = df_summary.groupby("Final Driver")["# of Events"].sum().reset_index()
+        # Charts: Speeding Events
+        st.subheader("⚠️ Speeding Events per Driver")
+        speeding_chart = summary_table.groupby("Assigned Driver")["# of Events"].sum()
 
-        fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
-        bars = ax_speed.bar(speed_df["Final Driver"], speed_df["# of Events"], color="orange")
-        ax_speed.set_title("Total Speeding Incidents per Driver")
-        ax_speed.set_xlabel("Driver")
-        ax_speed.set_ylabel("Speeding Incidents")
-        plt.xticks(rotation=45, ha='right')
-        for bar in bars:
-            height = bar.get_height()
-            ax_speed.annotate(f"{int(height)}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        fig_speed, ax_speed = plt.subplots(figsize=(6, 4))
+        speeding_chart.plot(kind="bar", color="red", ax=ax_speed)
+        ax_speed.set_ylabel("Number of Events")
+        ax_speed.set_title("Speeding Events per Driver")
         st.pyplot(fig_speed)
 
-        # Show summary table
-        st.subheader("📄 Cartrack Summary Table")
-        st.dataframe(df_summary)
+        # Download Excel
+        output_buf = io.BytesIO()
+        with pd.ExcelWriter(output_buf, engine="openpyxl") as writer:
+            summary_table.to_excel(writer, index=False, sheet_name="Cartrack Summary")
+        processed_file = output_buf.getvalue()
 
-        # Excel export
-        output_cartrack = io.BytesIO()
-        with pd.ExcelWriter(output_cartrack, engine='openpyxl') as writer:
-            df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
-        processed_cartrack = output_cartrack.getvalue()
-
-        st.download_button("⬇️ Download Cartrack Summary Excel", processed_cartrack, "cartrack_summary.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Download Cartrack Summary Excel", data=processed_file, file_name="cartrack_summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     except Exception as e:
         st.error(f"❌ Processing error: {e}")
