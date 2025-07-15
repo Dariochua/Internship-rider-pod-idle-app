@@ -113,7 +113,7 @@ if pod_file:
 
         processed_pod = output_pod.getvalue()
         file_name_pod = f"pod_summary_{delivery_date}.xlsx"
-        st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Download POD Summary Excel with charts", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ----------------------------- Idle Section -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
@@ -292,7 +292,7 @@ if rider_files:
         processed_idle = output_idle.getvalue()
         output_date = summary[0]["Date"] if summary else "unknown_date"
         file_name_idle = f"idle_summary_{output_date}.xlsx"
-        st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Download Idle Time Summary Excel with charts", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
 # Section 3: Cartrack Summary (Fixed Aggregation)
