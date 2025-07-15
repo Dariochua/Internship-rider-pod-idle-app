@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import datetime
 import difflib
 
+# NOTE: xlsxwriter is the engine we’re using for embedded charts
+import xlsxwriter
+
 st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
 
 st.title("🚚 Rider POD & Idle Time Analysis Web App")
@@ -14,7 +17,7 @@ st.markdown("""
 This tool lets you upload Detrack Excel files and get:
 - Rider **POD tracking summary + charts (POD count & weight)**
 - Rider **idle time, mileage, and max speed summary + charts**
-- Downloadable tables and **downloadable charts**
+- Downloadable tables and **downloadable charts embedded in Excel**
 - All data restricted to working hours: 8:30 AM – 5:30 PM
 
 ---
@@ -29,25 +32,21 @@ pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx
 
 if pod_file:
     df_pod = pd.read_excel(pod_file)
-    df_pod.columns = df_pod.columns.str.strip()  # Clean header spaces
+    df_pod.columns = df_pod.columns.str.strip()
 
     st.success("✅ POD file uploaded successfully!")
 
-    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns and "Weight" in df_pod.columns and "Delivery Date" in df_pod.columns:
+    if {"Assign to","POD Time","Weight","Delivery Date"}.issubset(df_pod.columns):
         try:
             df_pod["Delivery Date"] = pd.to_datetime(df_pod["Delivery Date"], errors='coerce')
             df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce').dt.time
 
-            # Combine Delivery Date and POD Time
             df_pod["POD DateTime"] = df_pod.apply(
-                lambda row: datetime.datetime.combine(row["Delivery Date"], row["POD Time"]) if pd.notnull(row["Delivery Date"]) and pd.notnull(row["POD Time"]) else pd.NaT,
+                lambda r: datetime.datetime.combine(r["Delivery Date"], r["POD Time"])
+                          if pd.notnull(r["Delivery Date"]) and pd.notnull(r["POD Time"]) else pd.NaT,
                 axis=1
             )
 
-            # Debug preview (optional)
-            # st.write(df_pod[["Assign to", "Delivery Date", "POD Time", "POD DateTime"]].head(50))
-
-            # Use most common delivery date for file name
             delivery_date_mode = df_pod["Delivery Date"].mode()[0]
             delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
         except:
@@ -67,63 +66,60 @@ if pod_file:
         st.subheader("📄 POD Summary Table")
         st.dataframe(pod_summary)
 
-        # POD count chart
-        pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
-        fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
-        bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
-        ax_pod.set_title("Total PODs per Rider")
-        ax_pod.set_xlabel("Rider")
-        ax_pod.set_ylabel("Total PODs")
-        plt.xticks(rotation=60, ha='right')
-        for bar in bars_pod:
-            height = bar.get_height()
-            ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                            xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_pod)
-
-        pod_img_buf = io.BytesIO()
-        fig_pod.savefig(pod_img_buf, format='png', bbox_inches="tight")
-        pod_img_buf.seek(0)
-        st.download_button("⬇️ Download POD Chart (PNG)", pod_img_buf, "pod_chart.png", "image/png")
-
-        # Weight chart
-        pod_summary_sorted_weight = pod_summary.sort_values("Total_Weight", ascending=False)
-        fig_weight, ax_weight = plt.subplots(figsize=(8, 5))
-        bars_weight = ax_weight.bar(pod_summary_sorted_weight["Assign to"], pod_summary_sorted_weight["Total_Weight"], color="blue")
-        ax_weight.set_title("Total Weight per Rider")
-        ax_weight.set_xlabel("Rider")
-        ax_weight.set_ylabel("Total Weight")
-        plt.xticks(rotation=60, ha='right')
-        for bar in bars_weight:
-            height = bar.get_height()
-            ax_weight.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_weight)
-
-        weight_img_buf = io.BytesIO()
-        fig_weight.savefig(weight_img_buf, format='png', bbox_inches="tight")
-        weight_img_buf.seek(0)
-        st.download_button("⬇️ Download Weight Chart (PNG)", weight_img_buf, "weight_chart.png", "image/png")
-
+        # ----- Create Excel with embedded charts -----
         output_pod = io.BytesIO()
-        with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
-            pod_summary.to_excel(writer, index=False, sheet_name="POD Summary")
+        with pd.ExcelWriter(output_pod, engine='xlsxwriter') as writer:
+            pod_summary.to_excel(writer, index=False, sheet_name='POD Summary')
+            workbook  = writer.book
+            worksheet = writer.sheets['POD Summary']
+            n = len(pod_summary)
+
+            # Chart 1: Total PODs
+            chart1 = workbook.add_chart({'type': 'column'})
+            chart1.add_series({
+                'name':       'Total PODs',
+                'categories': ['POD Summary', 1, 0, n, 0],
+                'values':     ['POD Summary', 1, 2, n, 2],
+            })
+            chart1.set_title({'name': 'Total PODs per Rider'})
+            chart1.set_x_axis({'name': 'Rider'})
+            chart1.set_y_axis({'name': 'POD Count'})
+            worksheet.insert_chart('F2', chart1, {'x_scale': 1.5, 'y_scale': 1.5})
+
+            # Chart 2: Total Weight
+            chart2 = workbook.add_chart({'type': 'column'})
+            chart2.add_series({
+                'name':       'Total Weight',
+                'categories': ['POD Summary', 1, 0, n, 0],
+                'values':     ['POD Summary', 1, 3, n, 3],
+            })
+            chart2.set_title({'name': 'Total Weight per Rider'})
+            chart2.set_x_axis({'name': 'Rider'})
+            chart2.set_y_axis({'name': 'Weight'})
+            worksheet.insert_chart('F20', chart2, {'x_scale': 1.5, 'y_scale': 1.5})
+
         processed_pod = output_pod.getvalue()
-
-        file_name_pod = f"pod_summary_{delivery_date}.xlsx"
-
-        st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "⬇️ Download POD Summary with Charts (Excel)",
+            processed_pod,
+            f"pod_summary_{delivery_date}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # -----------------------------
 # Section 2: Idle Time Analysis
 # -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
 
-rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
+rider_files = st.file_uploader(
+    "Upload multiple rider Excel files (vehicle route)",
+    type=["xlsx", "xls"],
+    accept_multiple_files=True,
+    key="idle"
+)
 
 if rider_files:
     summary = []
-
     for file in rider_files:
         date_match = re.search(r'\d{4}-\d{2}-\d{2}', file.name)
         date_str = date_match.group(0) if date_match else "unknown_date"
@@ -132,7 +128,7 @@ if rider_files:
         rider_name = xl.sheet_names[0]
         df = pd.read_excel(file, sheet_name=rider_name)
 
-        if "Time" not in df.columns or "Mileage (km)" not in df.columns or "Speed (km/h)" not in df.columns:
+        if {"Time","Mileage (km)","Speed (km/h)"}.difference(df.columns):
             st.error(f"❌ File {file.name} is missing required columns.")
             continue
 
@@ -140,26 +136,20 @@ if rider_files:
         df['Idle'] = df['Mileage (km)'] == 0
 
         work_start = datetime.time(8, 30)
-        work_end = datetime.time(17, 30)
-
+        work_end   = datetime.time(17, 30)
         df['Time_only'] = df['Time'].dt.time
         df_working = df[(df['Time_only'] >= work_start) & (df['Time_only'] <= work_end)]
 
         total_mileage = df_working['Mileage (km)'].sum()
-
         if total_mileage == 0:
-            total_idle = 0
-            total_over_15 = 0
-            num_over_15 = 0
-            max_speed = 0
+            total_idle = total_over_15 = num_over_15 = max_speed = 0
             status = "Not working for the day"
         else:
+            # compute idle periods
             idle_periods = []
             current_start = None
-
-            for idx, row in df.iterrows():
+            for _, row in df.iterrows():
                 t = row['Time'].time()
-
                 if t < work_start or t > work_end:
                     if current_start is not None:
                         idle_periods.append((current_start, row['Time']))
@@ -174,16 +164,16 @@ if rider_files:
                         idle_periods.append((current_start, row['Time']))
                         current_start = None
 
-            if current_start is not None and work_start <= current_start.time() <= work_end:
+            if current_start is not None:
                 idle_periods.append((current_start, df['Time'].iloc[-1]))
 
-            idle_durations = [(end - start).total_seconds() / 60 for start, end in idle_periods]
-            total_idle = sum(idle_durations)
-            over_15 = [d for d in idle_durations if d > 15]
-            total_over_15 = sum(over_15)
-            num_over_15 = len(over_15)
-            max_speed = df_working['Speed (km/h)'].max()
-            status = "Working for the day"
+            idle_durations = [(e - s).total_seconds()/60 for s,e in idle_periods]
+            total_idle      = sum(idle_durations)
+            over_15         = [d for d in idle_durations if d > 15]
+            total_over_15   = sum(over_15)
+            num_over_15     = len(over_15)
+            max_speed       = df_working['Speed (km/h)'].max()
+            status          = "Working for the day"
 
         summary.append({
             "File": file.name,
@@ -200,210 +190,156 @@ if rider_files:
     if summary:
         summary_df = pd.DataFrame(summary)
 
-        def format_hours_mins(x):
-            if x == 0 or pd.isna(x):
-                return "0 hr 0 min"
-            hours = int(x // 60)
-            mins = int(x % 60)
-            return f"{hours} hr {mins} min"
-
-        summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
+        # add a column for the chart data
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
-
-        summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
-        fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
-        bars_idle = ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
-        ax_idle.set_title("Idle Time >15 mins per Rider (hours)")
-        ax_idle.set_xlabel("Rider")
-        ax_idle.set_ylabel("Idle Time >15 mins (hrs)")
-        plt.xticks(rotation=60, ha='right')
-        for bar in bars_idle:
-            height = bar.get_height()
-            ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                             xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
-        summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
-        fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
-        bars_speed = ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
-        ax_speed.set_title("Max Speed per Rider (km/h)")
-        ax_speed.set_xlabel("Rider")
-        ax_speed.set_ylabel("Max Speed (km/h)")
-        plt.xticks(rotation=60, ha='right')
-        for bar in bars_speed:
-            height = bar.get_height()
-            ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
-        summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
-        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))
-        bars_mileage = ax_mileage.bar(summary_df_sorted_mileage["Rider"], summary_df_sorted_mileage["Total mileage (km)"], color="purple")
-        ax_mileage.set_title("Total Mileage per Rider (km)")
-        ax_mileage.set_xlabel("Rider")
-        ax_mileage.set_ylabel("Total Mileage (km)")
-        plt.xticks(rotation=45, ha='right', fontsize=9)
-        for bar in bars_mileage:
-            height = bar.get_height()
-            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.pyplot(fig_idle)
-            idle_img_buf = io.BytesIO()
-            fig_idle.savefig(idle_img_buf, format='png', bbox_inches="tight")
-            idle_img_buf.seek(0)
-            st.download_button("⬇️ Download Idle Time Chart (PNG)", idle_img_buf, "idle_time_chart.png", "image/png")
-
-        with col2:
-            st.pyplot(fig_speed)
-            speed_img_buf = io.BytesIO()
-            fig_speed.savefig(speed_img_buf, format='png', bbox_inches="tight")
-            speed_img_buf.seek(0)
-            st.download_button("⬇️ Download Max Speed Chart (PNG)", speed_img_buf, "max_speed_chart.png", "image/png")
-
-        st.pyplot(fig_mileage)
-        mileage_img_buf = io.BytesIO()
-        fig_mileage.savefig(mileage_img_buf, format='png', bbox_inches="tight")
-        mileage_img_buf.seek(0)
-        st.download_button("⬇️ Download Mileage Chart (PNG)", mileage_img_buf, "mileage_chart.png", "image/png")
-
-        summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
 
         st.subheader("📄 Idle Time Summary Table")
         st.dataframe(summary_df)
 
+        # ----- Create Excel with embedded charts -----
         output_idle = io.BytesIO()
-        with pd.ExcelWriter(output_idle, engine='openpyxl') as writer:
-            summary_df.to_excel(writer, index=False, sheet_name="Idle Summary")
+        with pd.ExcelWriter(output_idle, engine='xlsxwriter') as writer:
+            summary_df.to_excel(writer, index=False, sheet_name='Idle Summary')
+            workbook = writer.book
+            ws       = writer.sheets['Idle Summary']
+            n = len(summary_df)
+
+            # Idle >15 hrs chart
+            c1 = workbook.add_chart({'type': 'column'})
+            c1.add_series({
+                'name':       'Idle >15 mins (hrs)',
+                'categories': ['Idle Summary', 1, 1, n, 1],  # Rider names in col B
+                'values':     ['Idle Summary', 1, summary_df.columns.get_loc('Idle time >15 mins (hrs)'), n, summary_df.columns.get_loc('Idle time >15 mins (hrs)')],
+            })
+            c1.set_title({'name': 'Idle >15 mins per Rider (hrs)'})
+            ws.insert_chart('K2', c1, {'x_scale': 1.3, 'y_scale': 1.3})
+
+            # Max Speed chart
+            c2 = workbook.add_chart({'type': 'column'})
+            c2.add_series({
+                'name':       'Max Speed (km/h)',
+                'categories': ['Idle Summary', 1, 1, n, 1],
+                'values':     ['Idle Summary', 1, summary_df.columns.get_loc('Max speed (km/h)'), n, summary_df.columns.get_loc('Max speed (km/h)')],
+            })
+            c2.set_title({'name': 'Max Speed per Rider'})
+            ws.insert_chart('K20', c2, {'x_scale': 1.3, 'y_scale': 1.3})
+
+            # Total Mileage chart
+            c3 = workbook.add_chart({'type': 'column'})
+            c3.add_series({
+                'name':       'Total Mileage (km)',
+                'categories': ['Idle Summary', 1, 1, n, 1],
+                'values':     ['Idle Summary', 1, summary_df.columns.get_loc('Total mileage (km)'), n, summary_df.columns.get_loc('Total mileage (km)')],
+            })
+            c3.set_title({'name': 'Total Mileage per Rider'})
+            ws.insert_chart('K38', c3, {'x_scale': 1.3, 'y_scale': 1.3})
+
         processed_idle = output_idle.getvalue()
-
-        output_date = summary[0]["Date"] if summary else "unknown_date"
-        file_name_idle = f"idle_time_summary_{output_date}.xlsx"
-
-        st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        out_date = summary_df.loc[0, "Date"]
+        st.download_button(
+            "⬇️ Download Idle Summary with Charts (Excel)",
+            processed_idle,
+            f"idle_time_summary_{out_date}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # -----------------------------
-# Section 3: Cartrack Summary (Fixed Aggregation)
+# Section 3: Cartrack Summary
 # -----------------------------
-
 st.header("🚗 Cartrack Summary")
-
 trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls"], key="trip")
 fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls"], key="fuel")
 
 if trip_file and fuel_file:
     try:
-        # --- Read Trip Report metadata ---
+        # --- your existing Cartrack logic unchanged ---
         xl_trip = pd.ExcelFile(trip_file)
-        meta = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
-        reg_row = meta[meta.iloc[:, 0].astype(str).str.contains("Registration", na=False)]
-        registration = None
-        try:
-            registration = str(reg_row.iloc[0, 1]).strip()
-        except:
-            pass
+        meta    = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
+        reg_row = meta[meta.iloc[:,0].astype(str).str.contains("Registration",na=False)]
+        registration = str(reg_row.iloc[0,1]).strip() if not reg_row.empty else ""
 
-        # --- Read full trip data ---
         raw_trip = xl_trip.parse(xl_trip.sheet_names[0], header=None)
-        start_idx = raw_trip[raw_trip.iloc[:, 0] == "Driver"].index[0]
+        start_idx = raw_trip[raw_trip.iloc[:,0]=="Driver"].index[0]
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
-        df_trip.rename(columns={"Driver": "TripDriver"}, inplace=True)
-        # ensure Registration column
+        df_trip.rename(columns={"Driver":"TripDriver"}, inplace=True)
         df_trip["Registration"] = registration
-        df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors="coerce").fillna(0)
-        # speeding count
-        speed_col = next((c for c in df_trip.columns if re.match(r"Speeding", c, re.IGNORECASE)), None)
-        df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col, 0), errors="coerce").fillna(0) if speed_col else 0
+        df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance",0),errors="coerce").fillna(0)
+        speed_col = next((c for c in df_trip.columns if re.match(r"Speeding",c,re.IGNORECASE)),None)
+        df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col,0),errors="coerce").fillna(0) if speed_col else 0
 
-        # --- Read Fuel Efficiency data ---
         xl_fuel = pd.ExcelFile(fuel_file)
         raw_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
-        header_idx = raw_fuel[raw_fuel.iloc[:, 0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
+        header_idx = raw_fuel[raw_fuel.iloc[:,0].astype(str).str.contains("Vehicle Registration",na=False)].index[0]
         df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
-        df_fuel.rename(columns={"Vehicle Registration": "Registration"}, inplace=True)
+        df_fuel.rename(columns={"Vehicle Registration":"Registration"}, inplace=True)
         df_fuel["Registration"] = df_fuel["Registration"].astype(str).str.strip()
-        fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed", c, re.IGNORECASE)), None)
-        dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled", c, re.IGNORECASE)), None)
-        df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col, 0), errors="coerce").fillna(0)
-        df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col, 0), errors="coerce").fillna(0)
+        fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed",c,re.IGNORECASE)),None)
+        dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled",c,re.IGNORECASE)),None)
+        df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col,0),errors="coerce").fillna(0)
+        df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col,0),errors="coerce").fillna(0)
 
-        # --- Aggregate separately ---
-        trip_agg = df_trip.groupby("Registration", as_index=False).agg(
-            Total_Trip_Distance_km=("Trip Distance", "sum"),
-            Total_Speeding_Count=("Speeding_Count", "sum")
+        trip_agg = df_trip.groupby("Registration",as_index=False).agg(
+            Total_Trip_Distance_km=("Trip Distance","sum"),
+            Total_Speeding_Count=("Speeding_Count","sum")
         )
-        fuel_agg = df_fuel.groupby("Registration", as_index=False).agg(
-            Total_Fuel_Litres=("Fuel Consumed (litres)", "sum"),
-            Total_Distance_Travelled_km=("Distance Travelled (km)", "sum")
+        fuel_agg = df_fuel.groupby("Registration",as_index=False).agg(
+            Total_Fuel_Litres=("Fuel Consumed (litres)","sum"),
+            Total_Distance_Travelled_km=("Distance Travelled (km)","sum")
         )
-        df_agg = pd.merge(trip_agg, fuel_agg, on="Registration", how="outer").fillna(0)
+        df_agg = pd.merge(trip_agg,fuel_agg,on="Registration",how="outer").fillna(0)
 
-        # --- Assign drivers using df_trip context ---
-        # Combine df_trip and df_fuel to get End Location context
-        df_context = pd.merge(
-            df_trip,
-            df_fuel[["Registration"]],
-            on="Registration",
-            how="outer"
-        )
         override_map = {
-            "GBB933E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
-            "GBC9338C": "Toh", "GX9339E": "Masari", "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
+            "GBB933E":"Abdul Rahman","GBB933Z":"Mohd","GBC8305D":"Sugathan",
+            "GBC9338C":"Toh","GX9339E":"Masari","GY933T":"Mohd Hairul","GBB933X":"Unknown"
         }
-        def assign_driver(row):
-            td = row.get("TripDriver")
-            if isinstance(td, str) and td.strip(): return td
-            reg = row.get("Registration", "")
+        meta2 = pd.merge(df_trip, df_fuel[["Registration"]], on="Registration", how="outer")
+        def assign_driver(r):
+            if isinstance(r.TripDriver,str) and r.TripDriver.strip(): return r.TripDriver
+            reg = r.Registration
             if reg in override_map: return override_map[reg]
-            loc = str(row.get("End Location", "") or "")
-            if re.search(r"Punggol|Hougang", loc, re.IGNORECASE): return "Abdul Rahman"
-            if re.search(r"Woodlands|Yishun|Jurong East", loc, re.IGNORECASE): return "Sugathan"
-            if re.search(r"Changi South", loc, re.IGNORECASE): return "Mohd"
-            if re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Toh"
-            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Masari"
+            loc = str(r.get("End Location",""))
+            if re.search(r"Punggol|Hougang",loc,re.IGNORECASE): return "Abdul Rahman"
+            if re.search(r"Woodlands|Yishun|Jurong East",loc,re.IGNORECASE): return "Sugathan"
+            if re.search(r"Changi South",loc,re.IGNORECASE): return "Mohd"
+            if re.search(r"Pasir Panjang",loc,re.IGNORECASE): return "Toh"
+            if re.search(r"Kallang",loc,re.IGNORECASE) and not re.search(r"Pasir Panjang",loc,re.IGNORECASE): return "Masari"
             return "Unknown"
+
         reg_info = (
-            df_context.groupby("Registration", as_index=False)
-                      .agg(
-                          TripDriver=("TripDriver", lambda x: next((v for v in x if isinstance(v, str) and v), "")),
-                          EndLocation=("End Location", lambda x: next((v for v in x if isinstance(v, str) and v), ""))
-                      )
+            meta2.groupby("Registration",as_index=False)
+                 .agg(
+                     TripDriver=("TripDriver",lambda x: next((v for v in x if isinstance(v,str) and v), "")),
+                     EndLocation=("End Location",lambda x: next((v for v in x if isinstance(v,str) and v), ""))
+                 )
         )
-        reg_info["Driver"] = reg_info.apply(assign_driver, axis=1)
+        reg_info["Driver"] = reg_info.apply(assign_driver,axis=1)
 
-        # --- Mapping table ---
-        mapping = reg_info[["Registration", "Driver"]].drop_duplicates().sort_values(["Driver", "Registration"])
         st.subheader("📝 Rider ↔ Vehicle Mapping")
-        st.dataframe(mapping)
+        st.dataframe(reg_info[["Registration","Driver"]].drop_duplicates().sort_values(["Driver","Registration"]))
 
-        # --- Final summary by driver ---
-        df_summary = pd.merge(mapping, df_agg, on="Registration", how="left").fillna(0)
-        summary = df_summary.groupby("Driver", as_index=False).agg(
-            Total_Speeding_Count=("Total_Speeding_Count", "sum"),
-            Total_Mileage_km=("Total_Trip_Distance_km", "sum"),
-            Total_Fuel_Litres=("Total_Fuel_Litres", "sum")
+        df_summary = pd.merge(reg_info[["Registration","Driver"]], df_agg, on="Registration", how="left").fillna(0)
+        summary2 = df_summary.groupby("Driver",as_index=False).agg(
+            Total_Speeding_Count=("Total_Speeding_Count","sum"),
+            Total_Mileage_km=("Total_Trip_Distance_km","sum"),
+            Total_Fuel_Litres=("Total_Fuel_Litres","sum")
         )
-        summary["Fuel_Efficiency (km/l)"] = summary.apply(
-            lambda r: r["Total_Mileage_km"]/r["Total_Fuel_Litres"] if r["Total_Fuel_Litres"]>0 else None,
-            axis=1
+        summary2["Fuel_Efficiency (km/l)"] = summary2.apply(
+            lambda r: r.Total_Mileage_km/r.Total_Fuel_Litres if r.Total_Fuel_Litres>0 else None, axis=1
         )
         st.subheader("📄 Rider Fuel & Mileage Summary")
-        st.dataframe(summary)
+        st.dataframe(summary2)
 
-        # --- Downloadable report ---
         buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-            mapping.to_excel(writer, index=False, sheet_name="Mapping")
-            summary.to_excel(writer, index=False, sheet_name="Summary")
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            reg_info[["Registration","Driver"]].drop_duplicates().to_excel(writer, index=False, sheet_name="Mapping")
+            summary2.to_excel(writer, index=False, sheet_name="Summary")
         st.download_button(
             "⬇️ Download Cartrack Summary Excel",
             buf.getvalue(),
             "cartrack_summary.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
     except Exception as e:
         st.error(f"❌ Processing error: {e}")
