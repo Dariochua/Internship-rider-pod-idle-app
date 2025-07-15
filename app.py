@@ -267,7 +267,11 @@ if rider_files:
     wb_idle.save(output_idle)
     processed_idle = output_idle.getvalue()
 
-    st.download_button("⬇️ Download Idle Summary Excel", processed_idle, "idle_summary.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+# Get first date for file name
+output_date = summary_df["Date"].iloc[0] if "Date" in summary_df.columns and not summary_df["Date"].isna().all() else "unknown_date"
+file_name_idle = f"idle_summary_{output_date}.xlsx"
+
+st.download_button("⬇️ Download Idle Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
 # Section 3: Cartrack Summary (Fixed Aggregation)
