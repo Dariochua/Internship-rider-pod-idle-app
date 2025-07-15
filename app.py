@@ -293,11 +293,11 @@ if trip_file and fuel_file:
         # ---- Trip file ----
         excel_trip = pd.ExcelFile(trip_file)
 
-        # Read registration number from specific cell (A13)
+        # Read registration number from cell A13 (Excel row 13 → pandas index 12)
         reg_df = pd.read_excel(excel_trip, skiprows=12, nrows=1, usecols="A")
         registration_number = reg_df.columns[0].strip()
 
-        # Read actual trip data table
+        # Read actual trip data table (start at row 17, skip first 16 rows)
         df_trip = pd.read_excel(trip_file, skiprows=16)
         df_trip.columns = df_trip.columns.str.strip()
 
@@ -308,17 +308,17 @@ if trip_file and fuel_file:
         df_fuel = pd.read_excel(fuel_file, skiprows=13, header=0)
         df_fuel.columns = df_fuel.columns.str.strip()
 
-        reg_col_fuel = "Vehicle Registration"
-        if reg_col_fuel not in df_fuel.columns:
-            st.error(f"❌ Column '{reg_col_fuel}' not found in Fuel Report. Columns: {df_fuel.columns.tolist()}")
+        # Check for "Vehicle Registration" column
+        if "Vehicle Registration" not in df_fuel.columns:
+            st.error(f"❌ Column 'Vehicle Registration' not found. Columns after clean: {df_fuel.columns.tolist()}")
             st.stop()
 
-        # Clean registration values
+        # Clean
         df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
-        df_fuel[reg_col_fuel] = df_fuel[reg_col_fuel].astype(str).str.strip()
+        df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
         # Merge
-        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on=reg_col_fuel, how="left")
+        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
         # Assign driver logic
         def assign_driver(row):
@@ -332,7 +332,7 @@ if trip_file and fuel_file:
 
         df_summary["Assigned Driver"] = df_summary.apply(assign_driver, axis=1)
 
-        # No movement flag
+        # Flag no movement
         df_summary["No Movement"] = df_summary["Trip Distance"].apply(lambda x: x == 0)
 
         # Prepare summary table
