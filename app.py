@@ -283,125 +283,68 @@ if rider_files:
 
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# -----------------------------
 # Section 3: Cartrack Summary
-# -----------------------------
 st.header("🚗 Cartrack Summary")
-
-trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls"], key="trip")
-fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls"], key="fuel")
+trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx","xls"], key="trip")
+fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx","xls"], key="fuel")
 
 if trip_file and fuel_file:
     try:
-        # Read Trip Report
+        # --- Trip data ---
         xl_trip = pd.ExcelFile(trip_file)
-        meta_df = xl_trip.parse(xl_trip.sheet_names[0], nrows=15, header=None)
-        reg_row = meta_df[meta_df.iloc[:, 0] == "Registration:"]
-        registration = reg_row.iloc[0, 1] if not reg_row.empty else "Unknown"
+        meta = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
+        reg_row = meta[meta.iloc[:,0].astype(str).str.contains("Registration", na=False)]
+        registration = str(reg_row.iloc[0,1]).strip() if not reg_row.empty else None
 
-        # Parse the data table
-        full_df = xl_trip.parse(xl_trip.sheet_names[0], header=None)
-        start_row = full_df[full_df.iloc[:, 0] == "Driver"].index[0]
-        df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_row)
+        data = xl_trip.parse(xl_trip.sheet_names[0], header=None)
+        start_idx = data[data.iloc[:,0] == "Driver"].index[0]
+        df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
-        df_trip["Registration"] = str(registration).strip()
+        df_trip["Registration"] = registration
+        df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance",0), errors='coerce').fillna(0)
 
-        # Ensure Trip Distance is numeric in df_trip
-        if "Trip Distance" in df_trip.columns:
-            df_trip["Trip Distance"] = pd.to_numeric(df_trip["Trip Distance"], errors='coerce').fillna(0)
-
-        # Read Fuel Efficiency Report
+        # --- Fuel data ---
         xl_fuel = pd.ExcelFile(fuel_file)
-        fuel_raw = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
-        header_row = fuel_raw[fuel_raw.iloc[:, 0] == "Vehicle Registration"].index[0]
-        df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_row)
+        raw = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
+        header_idx = raw[raw.iloc[:,0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
+        df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
+        df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration","").astype(str).str.strip()
+        # detect fuel and distance columns
+        fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed",c, re.IGNORECASE)), None)
+        dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled",c, re.IGNORECASE)), None)
+        df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col,0), errors='coerce').fillna(0)
+        df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col,0), errors='coerce').fillna(0)
 
-        # Drop duplicate Trip Distance from df_fuel to avoid suffixes
-        if "Trip Distance" in df_fuel.columns:
-            df_fuel.drop(columns=["Trip Distance"], inplace=True)
-
-        # Clean registration keys
-        df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
-        df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
-
-        # Merge Trip and Fuel data
-        df_summary = pd.merge(
+        # --- Combine and assign drivers ---
+        df_all = pd.merge(
             df_trip,
             df_fuel,
             left_on="Registration",
             right_on="Vehicle Registration",
-            how="left"
+            how="outer"
         )
+        df_all["Driver"] = "Mohd Hairul"
+        df_all.loc[df_all["End Location"].str.contains("Ang Mo Kio",case=False,na=False),"Driver"] = "Abdul Rahman"
+        df_all.loc[df_all["End Location"].str.contains("Hougang|Sengkang",case=False,na=False),"Driver"] = "Abdul Rahman"
 
-        # Remove any truly duplicate-named columns (keeps first occurrence)
-        df_summary = df_summary.loc[:, ~df_summary.columns.duplicated()]
-
-        # Assign drivers based on End Location
-        df_summary["Driver"] = "Mohd Hairul"
-        df_summary.loc[
-            df_summary["End Location"].str.contains("Ang Mo Kio", case=False, na=False),
-            "Driver"
-        ] = "Abdul Rahman"
-        df_summary.loc[
-            df_summary["End Location"].str.contains("Hougang|Sengkang", case=False, na=False),
-            "Driver"
-        ] = "Abdul Rahman"
-
-        # Normalize Fuel Consumed column
-        fuel_col = next(
-            (col for col in df_summary.columns if re.match(r"Fuel Consumed", col, re.IGNORECASE)),
-            None
+        # --- Summary report ---
+        summary_df = df_all.groupby(["Registration","Driver"], as_index=False).agg(
+            Total_Mileage_km=("Trip Distance","sum"),
+            Total_Fuel_Litres=("Fuel Consumed (litres)","sum")
         )
-        if fuel_col is None:
-            st.error(f"❌ Fuel column not found. Columns: {list(df_summary.columns)}")
-            st.stop()
-        df_summary["Fuel Consumed (litres)"] = pd.to_numeric(
-            df_summary[fuel_col],
-            errors='coerce'
-        ).fillna(0)
+        st.subheader("📄 Cartrack Summary Report")
+        st.dataframe(summary_df)
 
-        # Plot total fuel per driver
-        fuel_per_driver = df_summary.groupby("Driver")["Fuel Consumed (litres)"].sum().reset_index()
-        fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
-        bars = ax_fuel.bar(
-            fuel_per_driver["Driver"],
-            fuel_per_driver["Fuel Consumed (litres)"],
-            color="orange"
-        )
-        ax_fuel.set_title("Total Fuel Consumed per Driver (litres)")
-        ax_fuel.set_ylabel("Litres")
-        plt.xticks(rotation=45)
-        for bar in bars:
-            ax_fuel.annotate(
-                f"{bar.get_height():.1f}",
-                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                xytext=(0, 3),
-                textcoords="offset points",
-                ha='center'
-            )
-        st.pyplot(fig_fuel)
-
-        # Calculate moved status safely (Trip Distance already numeric)
-        if "Trip Distance" in df_summary.columns:
-            df_summary["Moved"] = df_summary["Trip Distance"] > 0
-            df_summary["Vehicle Status"] = df_summary["Moved"].map({
-                True: "Moved",
-                False: "Did not move"
-            })
-
-        # Show and download summary
-        st.subheader("📄 Cartrack Summary Table")
-        st.dataframe(df_summary)
-        out_buf = io.BytesIO()
-        with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
-            df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
+        # export
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            summary_df.to_excel(writer, index=False, sheet_name="Summary")
         st.download_button(
             "⬇️ Download Cartrack Summary Excel",
-            out_buf.getvalue(),
-            "cartrack_summary.xlsx",
+            buf.getvalue(),
+            "cartrack_summary_report.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
     except Exception as e:
         st.error(f"❌ Processing error: {e}")
