@@ -24,7 +24,7 @@ This tool lets you upload Detrack Excel files and get:
 # -----------------------------
 st.header("📦 POD Tracking Summary")
 
-pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
+pod_file = st.file_uploader("Upload POD Excel file", type=["xlsx", "xls"], key="pod")
 
 if pod_file:
     df_pod = pd.read_excel(pod_file)
@@ -90,9 +90,21 @@ if pod_file:
 # -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
 
-rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = []
 
-if rider_files:
+uploaded_files = st.file_uploader("Upload multiple rider Excel files", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
+
+if uploaded_files:
+    st.session_state.uploaded_files = uploaded_files
+
+if st.button("🗑️ Clear All Files"):
+    st.session_state.uploaded_files = []
+    st.warning("Please click the ❌ next to each file above to fully clear the uploader.")
+
+if st.session_state.uploaded_files:
+    rider_files = st.session_state.uploaded_files
+
     summary = []
 
     for file in rider_files:
@@ -116,35 +128,44 @@ if rider_files:
         df['Time_only'] = df['Time'].dt.time
         df_working = df[(df['Time_only'] >= work_start) & (df['Time_only'] <= work_end)]
 
-        idle_periods = []
-        current_start = None
+        total_mileage_working = df_working['Mileage (km)'].sum()
 
-        for idx, row in df.iterrows():
-            t = row['Time'].time()
+        if total_mileage_working == 0:
+            total_idle = 0
+            total_over_15 = 0
+            num_over_15 = 0
+            status = "Not working for the day"
+        else:
+            idle_periods = []
+            current_start = None
 
-            if t < work_start or t > work_end:
-                if current_start is not None:
-                    idle_periods.append((current_start, row['Time']))
-                    current_start = None
-                continue
+            for idx, row in df.iterrows():
+                t = row['Time'].time()
 
-            if row['Idle']:
-                if current_start is None:
-                    current_start = row['Time']
-            else:
-                if current_start is not None:
-                    idle_periods.append((current_start, row['Time']))
-                    current_start = None
+                if t < work_start or t > work_end:
+                    if current_start is not None:
+                        idle_periods.append((current_start, row['Time']))
+                        current_start = None
+                    continue
 
-        if current_start is not None and work_start <= current_start.time() <= work_end:
-            idle_periods.append((current_start, df['Time'].iloc[-1]))
+                if row['Idle']:
+                    if current_start is None:
+                        current_start = row['Time']
+                else:
+                    if current_start is not None:
+                        idle_periods.append((current_start, row['Time']))
+                        current_start = None
 
-        idle_durations = [(end - start).total_seconds() / 60 for start, end in idle_periods]
-        total_idle = sum(idle_durations)
-        over_15 = [d for d in idle_durations if d > 15]
-        total_over_15 = sum(over_15)
-        num_over_15 = len(over_15)
-        total_mileage = df_working['Mileage (km)'].sum()
+            if current_start is not None and work_start <= current_start.time() <= work_end:
+                idle_periods.append((current_start, df['Time'].iloc[-1]))
+
+            idle_durations = [(end - start).total_seconds() / 60 for start, end in idle_periods]
+            total_idle = sum(idle_durations)
+            over_15 = [d for d in idle_durations if d > 15]
+            total_over_15 = sum(over_15)
+            num_over_15 = len(over_15)
+            status = "Worked"
+
         max_speed = df_working['Speed (km/h)'].max()
 
         summary.append({
@@ -154,8 +175,9 @@ if rider_files:
             "Total idle time (mins)": total_idle,
             "Idle time >15 mins (mins)": total_over_15,
             "Num idle periods >15 mins": num_over_15,
-            "Total mileage (km)": total_mileage,
-            "Max speed (km/h)": max_speed
+            "Total mileage (km)": total_mileage_working,
+            "Max speed (km/h)": max_speed,
+            "Status": status
         })
 
     if summary:
@@ -171,8 +193,8 @@ if rider_files:
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
+        # Idle chart
         summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
-
         fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
         bars_idle = ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
         ax_idle.set_title("Idle Time >15 mins per Rider (hours)")
@@ -184,8 +206,8 @@ if rider_files:
             ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
+        # Max speed chart
         summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
-
         fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
         bars_speed = ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
         ax_speed.set_title("Max Speed per Rider (km/h)")
@@ -197,9 +219,9 @@ if rider_files:
             ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
+        # Mileage chart
         summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
-
-        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))  # Wider and taller figure
+        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))
         bars_mileage = ax_mileage.bar(summary_df_sorted_mileage["Rider"], summary_df_sorted_mileage["Total mileage (km)"], color="purple")
         ax_mileage.set_title("Total Mileage per Rider (km)")
         ax_mileage.set_xlabel("Rider")
