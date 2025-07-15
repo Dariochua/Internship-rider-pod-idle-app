@@ -170,7 +170,7 @@ if rider_files:
                 t = row['Time'].time()
                 if t < work_start or t > work_end:
                     if current_start is not None:
-                        idle_periods.append((current_start, row['Time']))
+                        idle_periods.append((current_start, row['Time"]))
                         current_start = None
                     continue
 
@@ -218,7 +218,7 @@ if rider_files:
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        # Idle Chart
+        # Charts preparation
         summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
         fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
         bars_idle = ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
@@ -229,32 +229,24 @@ if rider_files:
         for bar in bars_idle:
             height = bar.get_height()
             ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_idle)
-
         idle_img_buf = io.BytesIO()
         fig_idle.savefig(idle_img_buf, format="png", bbox_inches="tight")
         idle_img_buf.seek(0)
-        st.download_button("⬇️ Download Idle Chart (PNG)", idle_img_buf, "idle_time_chart.png", "image/png")
 
-        # Mileage Chart
         summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
-        fig_mileage, ax_mileage = plt.subplots(figsize=(12, 6))
+        fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
         bars_mileage = ax_mileage.bar(summary_df_sorted_mileage["Rider"], summary_df_sorted_mileage["Total mileage (km)"], color="purple")
         ax_mileage.set_title("Total Mileage per Rider (km)")
         ax_mileage.set_xlabel("Rider")
         ax_mileage.set_ylabel("Total Mileage (km)")
-        plt.xticks(rotation=45, ha='right', fontsize=9)
+        plt.xticks(rotation=60, ha='right')
         for bar in bars_mileage:
             height = bar.get_height()
             ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_mileage)
-
         mileage_img_buf = io.BytesIO()
         fig_mileage.savefig(mileage_img_buf, format="png", bbox_inches="tight")
         mileage_img_buf.seek(0)
-        st.download_button("⬇️ Download Mileage Chart (PNG)", mileage_img_buf, "mileage_chart.png", "image/png")
 
-        # Max Speed Chart
         summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
         fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
         bars_speed = ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
@@ -265,13 +257,26 @@ if rider_files:
         for bar in bars_speed:
             height = bar.get_height()
             ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_speed)
-
         speed_img_buf = io.BytesIO()
         fig_speed.savefig(speed_img_buf, format="png", bbox_inches="tight")
         speed_img_buf.seek(0)
-        st.download_button("⬇️ Download Max Speed Chart (PNG)", speed_img_buf, "max_speed_chart.png", "image/png")
 
+        # Display charts in columns
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.pyplot(fig_idle)
+            st.download_button("⬇️ Download Idle Chart (PNG)", idle_img_buf, "idle_time_chart.png", "image/png")
+
+        with col2:
+            st.pyplot(fig_mileage)
+            st.download_button("⬇️ Download Mileage Chart (PNG)", mileage_img_buf, "mileage_chart.png", "image/png")
+
+        with col3:
+            st.pyplot(fig_speed)
+            st.download_button("⬇️ Download Speed Chart (PNG)", speed_img_buf, "max_speed_chart.png", "image/png")
+
+        # Drop helper column
         summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
 
         st.subheader("📄 Idle Time Summary Table")
