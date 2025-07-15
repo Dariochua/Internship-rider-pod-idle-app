@@ -10,7 +10,7 @@ st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered
 st.title("🚚 Rider POD & Idle Time Analysis Web App")
 
 st.markdown("""
-This tool lets you upload Excel files and get:
+This tool lets you upload Detrack Excel files and get:
 - Rider **POD tracking summary + chart**
 - Rider **idle time, mileage, and max speed summary + charts**
 - Downloadable tables and **downloadable charts**
@@ -24,7 +24,7 @@ This tool lets you upload Excel files and get:
 # -----------------------------
 st.header("📦 POD Tracking Summary")
 
-pod_file = st.file_uploader("Upload POD Excel file", type=["xlsx", "xls"], key="pod")
+pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
 
 if pod_file:
     df_pod = pd.read_excel(pod_file)
@@ -90,7 +90,7 @@ if pod_file:
 # -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
 
-rider_files = st.file_uploader("Upload multiple rider Excel files", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
+rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
 
 if rider_files:
     summary = []
