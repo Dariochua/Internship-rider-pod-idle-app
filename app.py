@@ -368,7 +368,7 @@ if trip_file and fuel_file:
         # explicit plate→rider overrides
         override_map = {
             "GBB933E": "Abdul Rahman",
-            "GBB933Z": "Mohd Hairul",
+            "GBB933Z": "Mohd",
             "GBC8305D": "Sugathan",
             "GBC9338C": "Toh",
             "GX9339E": "Masari",
@@ -394,7 +394,7 @@ if trip_file and fuel_file:
             if re.search(r"Woodlands|Yishun|Jurong East", loc, re.IGNORECASE):
                 return "Sugathan"
             if re.search(r"Changi South", loc, re.IGNORECASE):
-                return "Mohd Hairul"
+                return "Mohd"
             if re.search(r"Pasir Panjang", loc, re.IGNORECASE):
                 return "Toh"
             if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE):
