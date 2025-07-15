@@ -292,9 +292,8 @@ cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xl
 
 if cartrack_trip_file and cartrack_fuel_file:
     try:
-        # Read trip report, skip top rows to reach data
+        # Read trip report (skip top rows to get trip data)
         df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, skiprows=17)
-        # Add Registration column from cell value
         reg_df = pd.read_excel(cartrack_trip_file, sheet_name=0, skiprows=10, nrows=1, usecols="A")
         vehicle_reg = reg_df.columns[0].split(":")[1].strip() if ":" in reg_df.columns[0] else "UNKNOWN"
         df_trip["Registration"] = vehicle_reg
@@ -302,18 +301,29 @@ if cartrack_trip_file and cartrack_fuel_file:
         # Read fuel report
         df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0, skiprows=13)
 
-        # Clean column names
+        # Clean columns by stripping whitespace
         df_trip.columns = df_trip.columns.str.strip()
         df_fuel.columns = df_fuel.columns.str.strip()
 
-        # Strip Registration columns
+        # Debug columns print
+        # st.write("Trip columns:", df_trip.columns.tolist())
+        # st.write("Fuel columns:", df_fuel.columns.tolist())
+
+        # Fix possible hidden characters
+        df_fuel.columns = df_fuel.columns.str.replace('\u200b', '', regex=True)
+        df_trip.columns = df_trip.columns.str.replace('\u200b', '', regex=True)
+
+        # Check final column names
+        if "Vehicle Registration" not in df_fuel.columns:
+            raise KeyError("Column 'Vehicle Registration' not found after cleaning.")
+
         df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
         df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
         # Merge
         df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
-        # Convert End Location to string before assign_driver
+        # Convert End Location to string
         df_summary["End Location"] = df_summary["End Location"].astype(str)
 
         def assign_driver(row):
@@ -329,7 +339,7 @@ if cartrack_trip_file and cartrack_fuel_file:
 
         df_summary["Final Driver"] = df_summary.apply(assign_driver, axis=1)
 
-        # Flag vehicles with no trip distance
+        # Flag vehicles that did not move
         df_summary["Vehicle Moved?"] = df_summary["Trip Distance"].apply(lambda x: "No (Did not move)" if x == 0 or pd.isna(x) else "Yes")
 
         # Plot Fuel Consumed per driver
@@ -345,7 +355,6 @@ if cartrack_trip_file and cartrack_fuel_file:
             height = bar.get_height()
             ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
         st.pyplot(fig_fuel)
 
         # Plot Trip Distance per driver
@@ -361,14 +370,13 @@ if cartrack_trip_file and cartrack_fuel_file:
             height = bar.get_height()
             ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                                 xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
         st.pyplot(fig_mileage)
 
         # Plot Speeding Incidents per driver
-        speed_df = df_summary.groupby("Final Driver")["Speeding"].sum().reset_index()
+        speed_df = df_summary.groupby("Final Driver")["# of Events"].sum().reset_index()
 
         fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
-        bars = ax_speed.bar(speed_df["Final Driver"], speed_df["Speeding"], color="orange")
+        bars = ax_speed.bar(speed_df["Final Driver"], speed_df["# of Events"], color="orange")
         ax_speed.set_title("Total Speeding Incidents per Driver")
         ax_speed.set_xlabel("Driver")
         ax_speed.set_ylabel("Speeding Incidents")
@@ -377,7 +385,6 @@ if cartrack_trip_file and cartrack_fuel_file:
             height = bar.get_height()
             ax_speed.annotate(f"{int(height)}", xy=(bar.get_x() + bar.get_width() / 2, height),
                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
         st.pyplot(fig_speed)
 
         # Show summary table
