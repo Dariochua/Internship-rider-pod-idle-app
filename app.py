@@ -44,6 +44,9 @@ if pod_file:
                 axis=1
             )
 
+            # Debug preview (optional)
+            # st.write(df_pod[["Assign to", "Delivery Date", "POD Time", "POD DateTime"]].head(50))
+
             # Use most common delivery date for file name
             delivery_date_mode = df_pod["Delivery Date"].mode()[0]
             delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
