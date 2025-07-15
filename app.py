@@ -290,29 +290,30 @@ fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx
 
 if trip_file and fuel_file:
     try:
-        # Extract registration number from specific cell
+        # ---- Trip file ----
         excel_trip = pd.ExcelFile(trip_file)
-        reg_df = pd.read_excel(excel_trip, skiprows=11, nrows=1, usecols="A")
+
+        # Read registration number from specific cell (A13)
+        reg_df = pd.read_excel(excel_trip, skiprows=12, nrows=1, usecols="A")
         registration_number = reg_df.columns[0].strip()
 
-        # Read actual trip data
+        # Read actual trip data table
         df_trip = pd.read_excel(trip_file, skiprows=16)
         df_trip.columns = df_trip.columns.str.strip()
 
         # Add registration column
         df_trip["Registration"] = registration_number
 
-        # Read fuel file
-        df_fuel = pd.read_excel(fuel_file, skiprows=13)
+        # ---- Fuel file ----
+        df_fuel = pd.read_excel(fuel_file, skiprows=13, header=0)
         df_fuel.columns = df_fuel.columns.str.strip()
 
-        # Check registration column in fuel file
         reg_col_fuel = "Vehicle Registration"
         if reg_col_fuel not in df_fuel.columns:
             st.error(f"❌ Column '{reg_col_fuel}' not found in Fuel Report. Columns: {df_fuel.columns.tolist()}")
             st.stop()
 
-        # Clean
+        # Clean registration values
         df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
         df_fuel[reg_col_fuel] = df_fuel[reg_col_fuel].astype(str).str.strip()
 
@@ -321,7 +322,7 @@ if trip_file and fuel_file:
 
         # Assign driver logic
         def assign_driver(row):
-            end_loc = str(row["End Location"])
+            end_loc = str(row.get("End Location", ""))
             if "Ang Mo Kio" in end_loc:
                 return "Abdul Rahman"
             elif "Hougang" in end_loc or "Sengkang" in end_loc:
