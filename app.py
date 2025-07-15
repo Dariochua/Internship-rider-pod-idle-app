@@ -291,15 +291,33 @@ cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx"
 cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls"], key="fuel")
 
 if cartrack_trip_file and cartrack_fuel_file:
-    # Read trip report (skip rows to reach headers)
-    df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, skiprows=11)
+    # ---------- Read Summary Trip Report ----------
+    # Read all sheets as raw text to find registration
+    raw_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, header=None)
+
+    # Find registration value
+    registration_value = None
+    for idx, row in raw_trip.iterrows():
+        if str(row[0]).strip().startswith("Registration:"):
+            registration_value = str(row[1]).strip()
+            break
+
+    if registration_value is None:
+        st.error("❌ Could not find Registration value in trip file.")
+        st.stop()
+
+    # Read trip data with proper columns
+    df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, skiprows=19)
     df_trip.columns = df_trip.columns.astype(str).str.strip()
 
-    # Read fuel efficiency report (skip rows to reach headers)
+    # Add registration column manually
+    df_trip["Registration"] = registration_value
+
+    # ---------- Read Fuel Efficiency Report ----------
     df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0, skiprows=13)
     df_fuel.columns = df_fuel.columns.astype(str).str.strip()
 
-    # Clean registration columns
+    # Clean
     df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
     df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
