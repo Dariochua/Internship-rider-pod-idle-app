@@ -281,17 +281,11 @@ if rider_files:
         file_name_idle = f"idle_time_summary_{output_date}.xlsx"
 
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-# -----------------------------
-# Section 2: Idle Time Analysis
-# -----------------------------
-st.header("2️⃣ Idle Time, Mileage & Max Speed Analysis")
-
-# Your existing idle time code here (as you have it)
 
 # -----------------------------
 # Section 3: Cartrack Summary
 # -----------------------------
-st.header("3️⃣ Cartrack Summary")
+st.header("🚗 Cartrack Summary")
 
 cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls", "xlsx"], key="cartrack_trip")
 cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="cartrack_fuel")
