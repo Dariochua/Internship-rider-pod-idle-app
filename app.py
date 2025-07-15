@@ -4,7 +4,7 @@ import io
 import re
 import matplotlib.pyplot as plt
 import datetime
-from openpyxl import Workbook
+from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils.dataframe import dataframe_to_rows
 
@@ -16,15 +16,13 @@ st.markdown("""
 This tool lets you upload Detrack Excel files and get:
 - Rider **POD tracking summary + charts (POD count & weight)**
 - Rider **idle time, mileage, and max speed summary + charts**
-- Downloadable tables and charts embedded inside Excel
+- Downloadable tables and **charts inside downloadable Excel files**
 - All data restricted to working hours: 8:30 AM – 5:30 PM
 
 ---
 """)
 
-# -----------------------------
-# Section 1: POD Tracking
-# -----------------------------
+# ----------------------------- POD Section -----------------------------
 st.header("📦 POD Tracking Summary")
 
 pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
@@ -46,7 +44,11 @@ if pod_file:
 
         delivery_date_mode = df_pod["Delivery Date"].mode()[0]
         delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
+    else:
+        st.error("❌ Required columns 'Assign to', 'POD Time', 'Weight', or 'Delivery Date' not found.")
+        delivery_date = "unknown_date"
 
+    if delivery_date != "unknown_date":
         pod_summary = df_pod.groupby("Assign to").agg(
             Earliest_POD=("POD DateTime", "min"),
             Latest_POD=("POD DateTime", "max"),
@@ -57,7 +59,7 @@ if pod_file:
         st.subheader("📄 POD Summary Table")
         st.dataframe(pod_summary)
 
-        # POD count chart
+        # POD Count Chart
         pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
         fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
         bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
@@ -67,8 +69,7 @@ if pod_file:
         plt.xticks(rotation=60, ha='right')
         for bar in bars_pod:
             height = bar.get_height()
-            ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                            xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
         st.pyplot(fig_pod)
 
         pod_img_buf = io.BytesIO()
@@ -76,7 +77,7 @@ if pod_file:
         pod_img_buf.seek(0)
         st.download_button("⬇️ Download POD Chart (PNG)", pod_img_buf, "pod_chart.png", "image/png")
 
-        # Weight chart
+        # Weight Chart
         pod_summary_sorted_weight = pod_summary.sort_values("Total_Weight", ascending=False)
         fig_weight, ax_weight = plt.subplots(figsize=(8, 5))
         bars_weight = ax_weight.bar(pod_summary_sorted_weight["Assign to"], pod_summary_sorted_weight["Total_Weight"], color="blue")
@@ -86,43 +87,35 @@ if pod_file:
         plt.xticks(rotation=60, ha='right')
         for bar in bars_weight:
             height = bar.get_height()
-            ax_weight.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            ax_weight.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
         st.pyplot(fig_weight)
 
-        weight_img_buf = io.BytesIO()
-        fig_weight.savefig(weight_img_buf, format='png', bbox_inches="tight")
-        weight_img_buf.seek(0)
-        st.download_button("⬇️ Download Weight Chart (PNG)", weight_img_buf, "weight_chart.png", "image/png")
+        # Save Excel with charts
+        output_pod = io.BytesIO()
+        with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
+            pod_summary.to_excel(writer, index=False, sheet_name="POD Summary")
+            workbook = writer.book
+            worksheet = writer.sheets["POD Summary"]
 
-        # Save to Excel with charts
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "POD Summary"
+            # Charts
+            pod_img_buf.seek(0)
+            img1 = XLImage(pod_img_buf)
+            img1.anchor = "G1"
 
-        for r in dataframe_to_rows(pod_summary, index=False, header=True):
-            ws.append(r)
+            weight_img_buf = io.BytesIO()
+            fig_weight.savefig(weight_img_buf, format='png', bbox_inches="tight")
+            weight_img_buf.seek(0)
+            img2 = XLImage(weight_img_buf)
+            img2.anchor = "G26"
 
-        img1_path = "pod_chart_img.png"
-        img2_path = "weight_chart_img.png"
-        fig_pod.savefig(img1_path, bbox_inches="tight")
-        fig_weight.savefig(img2_path, bbox_inches="tight")
+            worksheet.add_image(img1)
+            worksheet.add_image(img2)
 
-        img1 = XLImage(img1_path)
-        img2 = XLImage(img2_path)
-        ws.add_image(img1, "G1")
-        ws.add_image(img2, "G20")
-
-        pod_excel_buf = io.BytesIO()
-        wb.save(pod_excel_buf)
-        pod_excel_buf.seek(0)
-
+        processed_pod = output_pod.getvalue()
         file_name_pod = f"pod_summary_{delivery_date}.xlsx"
-        st.download_button("⬇️ Download POD Summary Excel", pod_excel_buf, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Download POD Summary Excel", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# -----------------------------
-# Section 2: Idle Time Analysis
-# -----------------------------
+# ----------------------------- Idle Section -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
 
 rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
@@ -165,7 +158,6 @@ if rider_files:
 
             for idx, row in df.iterrows():
                 t = row['Time'].time()
-
                 if t < work_start or t > work_end:
                     if current_start is not None:
                         idle_periods.append((current_start, row['Time']))
@@ -205,8 +197,6 @@ if rider_files:
 
     if summary:
         summary_df = pd.DataFrame(summary)
-        output_date = date_str if date_str != "unknown_date" else "unknown_date"
-        file_name_idle = f"idle_summary_{output_date}.xlsx"
 
         def format_hours_mins(x):
             if x == 0 or pd.isna(x):
@@ -218,21 +208,17 @@ if rider_files:
         summary_df["Idle >15 mins (formatted)"] = summary_df["Idle time >15 mins (mins)"].apply(format_hours_mins)
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        st.subheader("📄 Idle Time Summary Table")
-        st.dataframe(summary_df)
-
         # Charts
         summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
         fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
         bars_idle = ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
         ax_idle.set_title("Idle Time >15 mins per Rider (hours)")
         ax_idle.set_xlabel("Rider")
-        ax_idle.set_ylabel("Idle Time >15 mins (hrs)")
+        ax_idle.set_ylabel("Idle Time (hrs)")
         plt.xticks(rotation=60, ha='right')
         for bar in bars_idle:
             height = bar.get_height()
-            ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                             xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            ax_idle.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
         summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
         fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
@@ -243,8 +229,7 @@ if rider_files:
         plt.xticks(rotation=60, ha='right')
         for bar in bars_speed:
             height = bar.get_height()
-            ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            ax_speed.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
         summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
         fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
@@ -255,58 +240,59 @@ if rider_files:
         plt.xticks(rotation=60, ha='right')
         for bar in bars_mileage:
             height = bar.get_height()
-            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
 
+        # Show on app and PNG download
         st.pyplot(fig_idle)
-        st.pyplot(fig_speed)
-        st.pyplot(fig_mileage)
-
         idle_img_buf = io.BytesIO()
         fig_idle.savefig(idle_img_buf, format='png', bbox_inches="tight")
         idle_img_buf.seek(0)
         st.download_button("⬇️ Download Idle Time Chart (PNG)", idle_img_buf, "idle_time_chart.png", "image/png")
 
+        st.pyplot(fig_speed)
         speed_img_buf = io.BytesIO()
         fig_speed.savefig(speed_img_buf, format='png', bbox_inches="tight")
         speed_img_buf.seek(0)
         st.download_button("⬇️ Download Max Speed Chart (PNG)", speed_img_buf, "max_speed_chart.png", "image/png")
 
+        st.pyplot(fig_mileage)
         mileage_img_buf = io.BytesIO()
         fig_mileage.savefig(mileage_img_buf, format='png', bbox_inches="tight")
         mileage_img_buf.seek(0)
         st.download_button("⬇️ Download Mileage Chart (PNG)", mileage_img_buf, "mileage_chart.png", "image/png")
 
-        # Save to Excel
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Idle Summary"
+        summary_df = summary_df.drop(columns=["Idle time >15 mins (hrs)"])
 
-        for r in dataframe_to_rows(summary_df, index=False, header=True):
-            ws.append(r)
+        st.subheader("📄 Idle Time Summary Table")
+        st.dataframe(summary_df)
 
-        fig_idle.savefig("idle_chart_img.png", bbox_inches="tight")
-        fig_speed.savefig("speed_chart_img.png", bbox_inches="tight")
-        fig_mileage.savefig("mileage_chart_img.png", bbox_inches="tight")
+        # Save Excel with charts
+        output_idle = io.BytesIO()
+        with pd.ExcelWriter(output_idle, engine='openpyxl') as writer:
+            summary_df.to_excel(writer, index=False, sheet_name="Idle Summary")
+            workbook = writer.book
+            worksheet = writer.sheets["Idle Summary"]
 
-        ws.add_image(XLImage("idle_chart_img.png"), "M1")
-        ws.add_image(XLImage("speed_chart_img.png"), "M20")
-        ws.add_image(XLImage("mileage_chart_img.png"), "M40")
+            idle_img_buf.seek(0)
+            img1 = XLImage(idle_img_buf)
+            img1.anchor = "M1"
 
-        idle_excel_buf = io.BytesIO()
-        wb.save(idle_excel_buf)
-        idle_excel_buf.seek(0)
+            speed_img_buf.seek(0)
+            img2 = XLImage(speed_img_buf)
+            img2.anchor = "M26"
 
-        # Find first date from filenames
-        date_from_filename = "unknown_date"
-        for f in rider_files:
-            match = re.search(r'\d{4}-\d{2}-\d{2}', f.name)
-            if match:
-                date_from_filename = match.group(0)
-                break
+            mileage_img_buf.seek(0)
+            img3 = XLImage(mileage_img_buf)
+            img3.anchor = "M51"
 
+            worksheet.add_image(img1)
+            worksheet.add_image(img2)
+            worksheet.add_image(img3)
+
+        processed_idle = output_idle.getvalue()
+        output_date = summary[0]["Date"] if summary else "unknown_date"
         file_name_idle = f"idle_summary_{output_date}.xlsx"
-        st.download_button("⬇️ Download Idle Summary Excel", idle_excel_buf, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
 # Section 3: Cartrack Summary (Fixed Aggregation)
