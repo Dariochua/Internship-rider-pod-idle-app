@@ -81,7 +81,7 @@ if pod_file:
         pod_summary_sorted_weight = pod_summary.sort_values("Total_Weight", ascending=False)
         fig_weight, ax_weight = plt.subplots(figsize=(8, 5))
         bars_weight = ax_weight.bar(pod_summary_sorted_weight["Assign to"], pod_summary_sorted_weight["Total_Weight"], color="blue")
-        ax_weight.set_title("Total Weight per Rider")
+        ax_weight.set_title("Total Weight per Rider (kg)")
         ax_weight.set_xlabel("Rider")
         ax_weight.set_ylabel("Total Weight")
         plt.xticks(rotation=60, ha='right')
