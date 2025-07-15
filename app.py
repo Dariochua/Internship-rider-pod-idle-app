@@ -282,6 +282,11 @@ if rider_files:
 
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import io
+
 # -----------------------------
 # Section 3: Cartrack Summary
 # -----------------------------
@@ -292,7 +297,7 @@ cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xl
 
 if cartrack_trip_file and cartrack_fuel_file:
     try:
-        # Read raw trip file to locate headers
+        # Read raw trip file
         df_trip_raw = pd.read_excel(cartrack_trip_file, sheet_name=0, header=None)
         trip_header_row = df_trip_raw[df_trip_raw.iloc[:, 0] == "Driver"].index[0]
         df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, header=trip_header_row)
@@ -303,7 +308,7 @@ if cartrack_trip_file and cartrack_fuel_file:
 
         df_trip["Registration"] = registration_value
 
-        # Read raw fuel file to locate headers
+        # Read raw fuel file
         df_fuel_raw = pd.read_excel(cartrack_fuel_file, sheet_name=0, header=None)
         fuel_header_row = df_fuel_raw[df_fuel_raw.iloc[:, 0] == "Vehicle Registration"].index[0]
         df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0, header=fuel_header_row)
@@ -319,7 +324,7 @@ if cartrack_trip_file and cartrack_fuel_file:
         def assign_driver(row):
             if isinstance(row["Driver"], str) and row["Driver"].strip():
                 return row["Driver"]
-            end_loc = str(row["End Location"])
+            end_loc = str(row["End Location"]) if not pd.isna(row["End Location"]) else ""
             if "Ang Mo Kio" in end_loc:
                 return "Abdul Rahman"
             elif "Hougang" in end_loc or "Sengkang" in end_loc:
