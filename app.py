@@ -284,7 +284,7 @@ if rider_files:
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
-# Section 3: Cartrack Summary (Fixed Aggregation & Proper Speeding)
+# Section 3: Cartrack Summary (Refined Registration & Speeding)
 # -----------------------------
 
 st.header("🚗 Cartrack Summary")
@@ -294,8 +294,9 @@ fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls
 
 if trip_file and fuel_file:
     try:
-        # --- Read Trip Report metadata for default registration ---
+        # --- Read Trip Report and extract registration field if present ---
         xl_trip = pd.ExcelFile(trip_file)
+        # Parse metadata for fallback
         meta = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
         reg_row = meta[meta.iloc[:, 0].astype(str).str.contains("Registration", na=False)]
         default_reg = None
@@ -304,28 +305,25 @@ if trip_file and fuel_file:
         except:
             default_reg = None
 
-        # --- Read trip data from the row where 'Driver' appears ---
+        # --- Read trip data starting at 'Driver' row ---
         raw_trip = xl_trip.parse(xl_trip.sheet_names[0], header=None)
         start_idx = raw_trip[raw_trip.iloc[:, 0] == "Driver"].index[0]
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
         df_trip.rename(columns={"Driver": "TripDriver"}, inplace=True)
 
-        # --- Determine per-row registration column if present ---
-        reg_col = next((c for c in df_trip.columns if re.match(r"Registration", c, re.IGNORECASE)), None)
-        if reg_col and reg_col in df_trip.columns:
-            df_trip["Registration"] = df_trip[reg_col].astype(str).str.strip()
+        # Use explicit Registration column if exists, else fallback to metadata
+        if "Registration" in df_trip.columns:
+            df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
         else:
             df_trip["Registration"] = default_reg
 
-        # --- Ensure numeric distance column ---
+        # Ensure numeric distance
         df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors="coerce").fillna(0)
 
-                # --- Extract actual speeding counts from trip report ---
-        # Look for any column containing 'speed' (case-insensitive)
-        speed_cols = [c for c in df_trip.columns if 'speed' in c.lower()]
-        if speed_cols:
-            speed_col = speed_cols[0]
+        # --- Extract speeding count directly from trip report ---
+        speed_col = next((c for c in df_trip.columns if re.match(r"Speeding", c, re.IGNORECASE)), None)
+        if speed_col:
             df_trip["Speeding_Count"] = pd.to_numeric(df_trip[speed_col], errors="coerce").fillna(0)
         else:
             df_trip["Speeding_Count"] = 0
@@ -355,16 +353,22 @@ if trip_file and fuel_file:
         df_agg = pd.merge(trip_agg, fuel_agg, on="Registration", how="outer").fillna(0)
 
         # --- Determine driver per vehicle ---
+        # If TripDriver column has meaningful names, use first non-null per registration
         reg_drivers = (
             df_trip.groupby("Registration", as_index=False)
-                   .agg(
-                       TripDriver=("TripDriver", lambda x: next((v for v in x if isinstance(v, str) and v.strip()), "")),
-                       EndLocation=("End Location", lambda x: next((v for v in x if isinstance(v, str) and v.strip()), ""))
-                   )
+                   .agg(TripDriver=("TripDriver", lambda x: next((v for v in x if isinstance(v, str) and v.strip()), "")),
+                        EndLocation=("End Location", lambda x: next((v for v in x if isinstance(v, str) and v.strip()), "")))
         )
+        # Explicit overrides
         override_map = {
-            "GBB9339E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
-            "GBC9338C": "Toh", "GX9339E": "Masari", "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
+            "GBB9339E": "Abdul Rahman",
+            "GBB933E": "Abdul Rahman",
+            "GBB933Z": "Mohd",
+            "GBC8305D": "Sugathan",
+            "GBC9338C": "Toh",
+            "GX9339E": "Masari",
+            "GY933T": "Mohd Hairul",
+            "GBB933X": "Unknown"
         }
         def assign_driver(row):
             if row["Registration"] in override_map:
@@ -372,11 +376,16 @@ if trip_file and fuel_file:
             if row["TripDriver"]:
                 return row["TripDriver"]
             loc = row.get("EndLocation", "") or ""
-            if re.search(r"Punggol|Hougang|Yishun|Woodlands", loc, re.IGNORECASE): return "Abdul Rahman"
-            if re.search(r"Jurong East", loc, re.IGNORECASE): return "Sugathan"
-            if re.search(r"Changi South", loc, re.IGNORECASE): return "Mohd"
-            if re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Toh"
-            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Masari"
+            if re.search(r"Punggol|Hougang|Yishun|Woodlands", loc, re.IGNORECASE):
+                return "Abdul Rahman"
+            if re.search(r"Jurong East", loc, re.IGNORECASE):
+                return "Sugathan"
+            if re.search(r"Changi South", loc, re.IGNORECASE):
+                return "Mohd"
+            if re.search(r"Pasir Panjang", loc, re.IGNORECASE):
+                return "Toh"
+            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE):
+                return "Masari"
             return "Unknown"
         reg_drivers["Driver"] = reg_drivers.apply(assign_driver, axis=1)
 
@@ -408,7 +417,7 @@ if trip_file and fuel_file:
             "⬇️ Download Cartrack Summary Excel",
             buf.getvalue(),
             "cartrack_summary.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "application/vnd.openxmlformats-officedocument-spreadsheetml.sheet"
         )
     except Exception as e:
         st.error(f"❌ Processing error: {e}")
