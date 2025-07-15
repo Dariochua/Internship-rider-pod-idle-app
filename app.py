@@ -290,39 +290,34 @@ fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx
 
 if trip_file and fuel_file:
     try:
-        # Read files
-        df_trip = pd.read_excel(trip_file, skiprows=12)
-        df_fuel = pd.read_excel(fuel_file, skiprows=13)
+        # Extract registration number from specific cell
+        excel_trip = pd.ExcelFile(trip_file)
+        reg_df = pd.read_excel(excel_trip, skiprows=11, nrows=1, usecols="A")
+        registration_number = reg_df.columns[0].strip()
 
-        # Strip column names
+        # Read actual trip data
+        df_trip = pd.read_excel(trip_file, skiprows=16)
         df_trip.columns = df_trip.columns.str.strip()
+
+        # Add registration column
+        df_trip["Registration"] = registration_number
+
+        # Read fuel file
+        df_fuel = pd.read_excel(fuel_file, skiprows=13)
         df_fuel.columns = df_fuel.columns.str.strip()
 
-        # Find registration columns dynamically
-        trip_cols = df_trip.columns.tolist()
-        fuel_cols = df_fuel.columns.tolist()
-
-        reg_col_trip = difflib.get_close_matches("Registration", trip_cols, n=1)
-        reg_col_fuel = difflib.get_close_matches("Vehicle Registration", fuel_cols, n=1)
-
-        if reg_col_trip:
-            reg_col_trip = reg_col_trip[0]
-        else:
-            st.error(f"❌ 'Registration' column not found in Trip Report. Columns: {trip_cols}")
+        # Check registration column in fuel file
+        reg_col_fuel = "Vehicle Registration"
+        if reg_col_fuel not in df_fuel.columns:
+            st.error(f"❌ Column '{reg_col_fuel}' not found in Fuel Report. Columns: {df_fuel.columns.tolist()}")
             st.stop()
 
-        if reg_col_fuel:
-            reg_col_fuel = reg_col_fuel[0]
-        else:
-            st.error(f"❌ 'Vehicle Registration' column not found in Fuel Report. Columns: {fuel_cols}")
-            st.stop()
-
-        # Clean columns
-        df_trip[reg_col_trip] = df_trip[reg_col_trip].astype(str).str.strip()
+        # Clean
+        df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
         df_fuel[reg_col_fuel] = df_fuel[reg_col_fuel].astype(str).str.strip()
 
         # Merge
-        df_summary = pd.merge(df_trip, df_fuel, left_on=reg_col_trip, right_on=reg_col_fuel, how="left")
+        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on=reg_col_fuel, how="left")
 
         # Assign driver logic
         def assign_driver(row):
@@ -331,8 +326,6 @@ if trip_file and fuel_file:
                 return "Abdul Rahman"
             elif "Hougang" in end_loc or "Sengkang" in end_loc:
                 return "Abdul Rahman"
-            elif pd.isna(row[reg_col_trip]) or row["Trip Distance"] == 0:
-                return "Mohd Hairul"
             else:
                 return "Mohd Hairul"
 
@@ -343,7 +336,7 @@ if trip_file and fuel_file:
 
         # Prepare summary table
         summary_table = df_summary[
-            ["Assigned Driver", reg_col_trip, "Trip Distance", "Fuel Consumed", "Fuel Efficiency", "# of Events", "Max. Speed"]
+            ["Assigned Driver", "Registration", "Trip Distance", "Fuel Consumed", "Fuel Efficiency", "# of Events", "Max. Speed"]
         ].copy()
 
         st.subheader("📄 Cartrack Summary Table")
