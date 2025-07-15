@@ -282,9 +282,16 @@ if rider_files:
 
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 # -----------------------------
+# Section 2: Idle Time Analysis
+# -----------------------------
+st.header("2️⃣ Idle Time, Mileage & Max Speed Analysis")
+
+# Your existing idle time code here (as you have it)
+
+# -----------------------------
 # Section 3: Cartrack Summary
 # -----------------------------
-st.header("🚗 Cartrack Summary")
+st.header("3️⃣ Cartrack Summary")
 
 cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls", "xlsx"], key="cartrack_trip")
 cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="cartrack_fuel")
@@ -295,7 +302,6 @@ if cartrack_trip_file and cartrack_fuel_file:
     df_trip.columns = df_trip.columns.str.strip()
     df_fuel.columns = df_fuel.columns.str.strip()
 
-    # Aggregate trip data per vehicle
     vehicle_trip_summary = df_trip.groupby("Vehicle").agg({
         "Trip Distance": "sum",
         "Speeding": "sum",
@@ -303,10 +309,8 @@ if cartrack_trip_file and cartrack_fuel_file:
         "End Location": lambda x: list(x.unique())
     }).reset_index()
 
-    # Merge with fuel data
     merged = pd.merge(vehicle_trip_summary, df_fuel[["Vehicle", "Fuel Consumed (litres)"]], on="Vehicle", how="left")
 
-    # Assign drivers
     driver_list = []
     comment_list = []
     efficiency_list = []
@@ -327,12 +331,9 @@ if cartrack_trip_file and cartrack_fuel_file:
                         break
 
         driver_list.append(assigned_driver)
-
-        # Comment
         comment = "Did not move" if row["Trip Distance"] == 0 else "Active"
         comment_list.append(comment)
 
-        # Fuel efficiency
         fuel = row["Fuel Consumed (litres)"]
         dist = row["Trip Distance"]
         efficiency = dist / fuel if fuel and fuel != 0 else 0
@@ -347,7 +348,6 @@ if cartrack_trip_file and cartrack_fuel_file:
     st.subheader("📄 Cartrack Summary Table")
     st.dataframe(final_df)
 
-    # Fuel efficiency chart
     efficiency_df = final_df.groupby("Driver")["Fuel Efficiency (km/l)"].mean().reset_index()
     fig_eff, ax_eff = plt.subplots(figsize=(8, 5))
     ax_eff.bar(efficiency_df["Driver"], efficiency_df["Fuel Efficiency (km/l)"], color="green")
@@ -356,7 +356,6 @@ if cartrack_trip_file and cartrack_fuel_file:
     plt.xticks(rotation=45)
     st.pyplot(fig_eff)
 
-    # Mileage chart
     mileage_df = final_df.groupby("Driver")["Trip Distance"].sum().reset_index()
     fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
     ax_mileage.bar(mileage_df["Driver"], mileage_df["Trip Distance"], color="purple")
@@ -365,7 +364,6 @@ if cartrack_trip_file and cartrack_fuel_file:
     plt.xticks(rotation=45)
     st.pyplot(fig_mileage)
 
-    # Speeding chart
     speeding_df = final_df.groupby("Driver")["Speeding"].sum().reset_index()
     fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
     ax_speed.bar(speeding_df["Driver"], speeding_df["Speeding"], color="red")
@@ -374,7 +372,6 @@ if cartrack_trip_file and cartrack_fuel_file:
     plt.xticks(rotation=45)
     st.pyplot(fig_speed)
 
-    # Download summary
     output_cartrack = io.BytesIO()
     with pd.ExcelWriter(output_cartrack, engine='openpyxl') as writer:
         final_df.to_excel(writer, index=False, sheet_name="Cartrack Summary")
