@@ -291,7 +291,7 @@ cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls",
 cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="fuel")
 
 if cartrack_trip_file and cartrack_fuel_file:
-    # Step 1: Read raw to extract Registration
+    # Step 1: Read entire trip file to find Registration
     trip_all_df = pd.read_excel(cartrack_trip_file, header=None)
     reg_row = trip_all_df[trip_all_df[0] == "Registration:"]
     if not reg_row.empty:
@@ -299,20 +299,25 @@ if cartrack_trip_file and cartrack_fuel_file:
     else:
         vehicle_registration = "UNKNOWN"
 
-    # Step 2: Read actual trip data from row 19 (index 18)
-    df_trip = pd.read_excel(cartrack_trip_file, skiprows=18)
+    # Find where trip table starts (search for "Driver" header)
+    header_row_idx = trip_all_df[trip_all_df[0] == "Driver"].index[0]
+    
+    # Read trip data from that header
+    df_trip = pd.read_excel(cartrack_trip_file, skiprows=header_row_idx)
     df_trip.columns = df_trip.columns.str.strip()
     df_trip["Registration"] = vehicle_registration
 
-    # Step 3: Read fuel file from row 16 (index 15)
-    df_fuel = pd.read_excel(cartrack_fuel_file, skiprows=15)
+    # Fix for fuel
+    df_fuel_raw = pd.read_excel(cartrack_fuel_file, header=None)
+    # Find where "Vehicle Registration" header appears
+    fuel_header_idx = df_fuel_raw[df_fuel_raw[0] == "Vehicle Registration"].index[0]
+    df_fuel = pd.read_excel(cartrack_fuel_file, skiprows=fuel_header_idx)
     df_fuel.columns = df_fuel.columns.str.strip()
 
-    # Verify column names
+    # Check columns
     st.write("Trip columns:", df_trip.columns.tolist())
     st.write("Fuel columns:", df_fuel.columns.tolist())
 
-    # Merge
     if "Registration" in df_trip.columns and "Vehicle Registration" in df_fuel.columns:
         df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
@@ -322,18 +327,15 @@ if cartrack_trip_file and cartrack_fuel_file:
                 return "Abdul Rahman"
             elif "Ang Mo Kio" in str(row["End Location"]):
                 return "Abdul Rahman"
-            elif pd.notna(row["Driver"]) and row["Driver"].strip():
+            elif pd.notna(row.get("Driver", "")) and str(row["Driver"]).strip():
                 return row["Driver"]
             else:
                 return "Mohd Hairul"
 
         df_summary["Driver"] = df_summary.apply(assign_driver, axis=1)
-
-        # Vehicle status
         df_summary["Status"] = df_summary["Trip Distance"].apply(lambda x: "Not moved" if x == 0 else "Moved")
 
         # Charts
-        # Fuel
         fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
         fuel_data = df_summary.groupby("Driver")["Fuel Consumed (litres)"].sum()
         bars_fuel = ax_fuel.bar(fuel_data.index, fuel_data.values, color="orange")
@@ -346,7 +348,6 @@ if cartrack_trip_file and cartrack_fuel_file:
                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
         st.pyplot(fig_fuel)
 
-        # Mileage
         fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
         mileage_data = df_summary.groupby("Driver")["Trip Distance"].sum()
         bars_mileage = ax_mileage.bar(mileage_data.index, mileage_data.values, color="purple")
@@ -359,7 +360,6 @@ if cartrack_trip_file and cartrack_fuel_file:
                                 xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
         st.pyplot(fig_mileage)
 
-        # Speeding
         fig_speeding, ax_speeding = plt.subplots(figsize=(8, 5))
         speeding_data = df_summary.groupby("Driver")["Speeding"].sum()
         bars_speeding = ax_speeding.bar(speeding_data.index, speeding_data.values, color="red")
@@ -372,11 +372,9 @@ if cartrack_trip_file and cartrack_fuel_file:
                                  xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
         st.pyplot(fig_speeding)
 
-        # Table
         st.subheader("📄 Cartrack Summary Table")
         st.dataframe(df_summary)
 
-        # Download
         output_cartrack = io.BytesIO()
         with pd.ExcelWriter(output_cartrack, engine="openpyxl") as writer:
             df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
