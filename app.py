@@ -284,7 +284,7 @@ if rider_files:
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
-# Section 3: Cartrack Summary (Fixed Aggregation)
+# Section 3: Cartrack Summary (Adjusted for GBB9339E & Speeding)
 # -----------------------------
 
 st.header("🚗 Cartrack Summary")
@@ -310,12 +310,16 @@ if trip_file and fuel_file:
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
         df_trip.rename(columns={"Driver": "TripDriver"}, inplace=True)
-        # ensure Registration column
         df_trip["Registration"] = registration
         df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors="coerce").fillna(0)
-        # speeding count
+
+        # --- Count speeding events from summary trip report ---
         speed_col = next((c for c in df_trip.columns if re.match(r"Speeding", c, re.IGNORECASE)), None)
-        df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col, 0), errors="coerce").fillna(0) if speed_col else 0
+        if speed_col:
+            # Treat any non-zero or truthy entry as an event
+            df_trip["Speeding_Count"] = df_trip[speed_col].apply(lambda x: 1 if (isinstance(x, (int, float)) and x>0) or str(x).strip().lower() in ['yes','true'] else 0)
+        else:
+            df_trip["Speeding_Count"] = 0
 
         # --- Read Fuel Efficiency data ---
         xl_fuel = pd.ExcelFile(fuel_file)
@@ -330,7 +334,7 @@ if trip_file and fuel_file:
         df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col, 0), errors="coerce").fillna(0)
         df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col, 0), errors="coerce").fillna(0)
 
-        # --- Aggregate separately ---
+        # --- Aggregate trip and fuel separately ---
         trip_agg = df_trip.groupby("Registration", as_index=False).agg(
             Total_Trip_Distance_km=("Trip Distance", "sum"),
             Total_Speeding_Count=("Speeding_Count", "sum")
@@ -341,29 +345,34 @@ if trip_file and fuel_file:
         )
         df_agg = pd.merge(trip_agg, fuel_agg, on="Registration", how="outer").fillna(0)
 
-        # --- Assign drivers using df_trip context ---
-        # Combine df_trip and df_fuel to get End Location context
-        df_context = pd.merge(
-            df_trip,
-            df_fuel[["Registration"]],
-            on="Registration",
-            how="outer"
-        )
+        # --- Assign drivers per vehicle ---
+        df_context = df_trip.copy()
         override_map = {
-            "GBB933E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
-            "GBC9338C": "Toh", "GX9339E": "Masari", "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
+            "GBB9339E": "Abdul Rahman",  # specific override
+            "GBB933E": "Abdul Rahman",
+            "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
+            "GBC9338C": "Toh", "GX9339E": "Masari",
+            "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
         }
         def assign_driver(row):
             td = row.get("TripDriver")
-            if isinstance(td, str) and td.strip(): return td
+            if isinstance(td, str) and td.strip():
+                return td
             reg = row.get("Registration", "")
-            if reg in override_map: return override_map[reg]
+            if reg in override_map:
+                return override_map[reg]
             loc = str(row.get("End Location", "") or "")
-            if re.search(r"Punggol|Hougang", loc, re.IGNORECASE): return "Abdul Rahman"
-            if re.search(r"Woodlands|Yishun|Jurong East", loc, re.IGNORECASE): return "Sugathan"
-            if re.search(r"Changi South", loc, re.IGNORECASE): return "Mohd"
-            if re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Toh"
-            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Masari"
+            # Yishun/Woodlands now Abdul Rahman
+            if re.search(r"Punggol|Hougang|Yishun|Woodlands", loc, re.IGNORECASE):
+                return "Abdul Rahman"
+            if re.search(r"Jurong East", loc, re.IGNORECASE):
+                return "Sugathan"
+            if re.search(r"Changi South", loc, re.IGNORECASE):
+                return "Mohd"
+            if re.search(r"Pasir Panjang", loc, re.IGNORECASE):
+                return "Toh"
+            if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE):
+                return "Masari"
             return "Unknown"
         reg_info = (
             df_context.groupby("Registration", as_index=False)
@@ -402,7 +411,7 @@ if trip_file and fuel_file:
             "⬇️ Download Cartrack Summary Excel",
             buf.getvalue(),
             "cartrack_summary.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "application/vnd.openxmlformats-officedocument-spreadsheetml.sheet"
         )
 
     except Exception as e:
