@@ -290,33 +290,32 @@ fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx","xls"
 
 if trip_file and fuel_file:
     try:
-        # --- Trip data ---
+        # Read Trip report
         xl_trip = pd.ExcelFile(trip_file)
         meta = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
         reg_row = meta[meta.iloc[:,0].astype(str).str.contains("Registration", na=False)]
         registration = str(reg_row.iloc[0,1]).strip() if not reg_row.empty else None
 
         data = xl_trip.parse(xl_trip.sheet_names[0], header=None)
-        start_idx = data[data.iloc[:,0] == "Driver"].index[0]
+        start_idx = data[data.iloc[:,0]=="Driver"].index[0]
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
         df_trip["Registration"] = registration
         df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance",0), errors='coerce').fillna(0)
 
-        # --- Fuel data ---
+        # Read Fuel report
         xl_fuel = pd.ExcelFile(fuel_file)
         raw = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
         header_idx = raw[raw.iloc[:,0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
         df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
         df_fuel["Vehicle Registration"] = df_fuel.get("Vehicle Registration","").astype(str).str.strip()
-        # detect fuel and distance columns
-        fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed",c, re.IGNORECASE)), None)
-        dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled",c, re.IGNORECASE)), None)
+        fuel_col = next((c for c in df_fuel.columns if re.match(r"Fuel Consumed", c, re.IGNORECASE)), None)
+        dist_col = next((c for c in df_fuel.columns if re.match(r"Distance Travelled", c, re.IGNORECASE)), None)
         df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col,0), errors='coerce').fillna(0)
         df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col,0), errors='coerce').fillna(0)
 
-        # --- Combine and assign drivers ---
+        # Merge
         df_all = pd.merge(
             df_trip,
             df_fuel,
@@ -324,11 +323,19 @@ if trip_file and fuel_file:
             right_on="Vehicle Registration",
             how="outer"
         )
+        # Default driver
         df_all["Driver"] = "Mohd Hairul"
-        df_all.loc[df_all["End Location"].str.contains("Ang Mo Kio",case=False,na=False),"Driver"] = "Abdul Rahman"
-        df_all.loc[df_all["End Location"].str.contains("Hougang|Sengkang",case=False,na=False),"Driver"] = "Abdul Rahman"
+        # Conditional mapping by area
+        df_all.loc[df_all["End Location"].str.contains("Punggol|Hougang", case=False, na=False), "Driver"] = "Abdul Rahman"
+        df_all.loc[df_all["End Location"].str.contains("Woodlands|Yishun", case=False, na=False), "Driver"] = "Mohd"
+        df_all.loc[df_all["End Location"].str.contains("Jurong East", case=False, na=False), "Driver"] = "Sugathan"
+        df_all.loc[df_all["End Location"].str.contains("Changi South", case=False, na=False), "Driver"] = "Mohd Hairul"
+        df_all.loc[df_all["End Location"].str.contains("Pasir Panjang", case=False, na=False), "Driver"] = "Toh"
+        # Kallang except Pasir Panjang
+        mask_kallang = df_all["End Location"].str.contains("Kallang", case=False, na=False) & ~df_all["End Location"].str.contains("Pasir Panjang", case=False, na=False)
+        df_all.loc[mask_kallang, "Driver"] = "Masari"
 
-        # --- Summary report ---
+        # Summarize per vehicle & driver
         summary_df = df_all.groupby(["Registration","Driver"], as_index=False).agg(
             Total_Mileage_km=("Trip Distance","sum"),
             Total_Fuel_Litres=("Fuel Consumed (litres)","sum")
@@ -336,7 +343,7 @@ if trip_file and fuel_file:
         st.subheader("📄 Cartrack Summary Report")
         st.dataframe(summary_df)
 
-        # export
+        # Export
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             summary_df.to_excel(writer, index=False, sheet_name="Summary")
