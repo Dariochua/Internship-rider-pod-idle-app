@@ -24,7 +24,7 @@ This tool lets you upload Detrack Excel files and get:
 # -----------------------------
 st.header("📦 POD Tracking Summary")
 
-pod_file = st.file_uploader("Upload POD Excel file (delivery item.csv)", type=["xlsx", "xls"], key="pod")
+pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
 
 if pod_file:
     df_pod = pd.read_excel(pod_file)
@@ -90,7 +90,7 @@ if pod_file:
 # -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
 
-rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route.csv)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
+rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
 
 if rider_files:
     summary = []
