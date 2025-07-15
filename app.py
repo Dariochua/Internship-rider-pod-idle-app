@@ -4,10 +4,10 @@ import io
 import re
 import matplotlib.pyplot as plt
 import datetime
-import difflib
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
+import os
 
 st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
 
@@ -17,7 +17,7 @@ st.markdown("""
 This tool lets you upload Detrack Excel files and get:
 - Rider **POD tracking summary + charts (POD count & weight)**
 - Rider **idle time, mileage, and max speed summary + charts**
-- Downloadable tables and **downloadable charts included in Excel**
+- Downloadable tables and **charts included in Excel**
 - All data restricted to working hours: 8:30 AM – 5:30 PM
 
 ---
@@ -60,7 +60,7 @@ if pod_file:
         st.subheader("📄 POD Summary Table")
         st.dataframe(pod_summary)
 
-        # Charts for app and excel
+        # Charts for app and Excel
         pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
         fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
         bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
@@ -89,7 +89,7 @@ if pod_file:
         weight_img_buf.seek(0)
         st.download_button("⬇️ Download Weight Chart (PNG)", weight_img_buf, "weight_chart.png", "image/png")
 
-        # Save to Excel with images
+        # Save to Excel
         output_pod = io.BytesIO()
         wb = Workbook()
         ws = wb.active
@@ -107,7 +107,6 @@ if pod_file:
         wb.save(output_pod)
         output_pod.seek(0)
         st.download_button("⬇️ Download POD Summary Excel", output_pod, f"pod_summary_{delivery_date}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        import os
         os.remove("pod_chart_temp.png")
         os.remove("weight_chart_temp.png")
 
@@ -184,7 +183,7 @@ if rider_files:
         summary_df = pd.DataFrame(summary)
         summary_df["Idle time >15 mins (hrs)"] = summary_df["Idle time >15 mins (mins)"] / 60
 
-        # Create charts
+        # Idle chart
         summary_df_sorted_idle = summary_df.sort_values("Idle time >15 mins (hrs)", ascending=False)
         fig_idle, ax_idle = plt.subplots(figsize=(8, 5))
         ax_idle.bar(summary_df_sorted_idle["Rider"], summary_df_sorted_idle["Idle time >15 mins (hrs)"], color="skyblue")
@@ -196,6 +195,7 @@ if rider_files:
         idle_img_buf.seek(0)
         st.download_button("⬇️ Download Idle Chart (PNG)", idle_img_buf, "idle_chart.png", "image/png")
 
+        # Speed chart
         summary_df_sorted_speed = summary_df.sort_values("Max speed (km/h)", ascending=False)
         fig_speed, ax_speed = plt.subplots(figsize=(8, 5))
         ax_speed.bar(summary_df_sorted_speed["Rider"], summary_df_sorted_speed["Max speed (km/h)"], color="green")
@@ -207,6 +207,7 @@ if rider_files:
         speed_img_buf.seek(0)
         st.download_button("⬇️ Download Speed Chart (PNG)", speed_img_buf, "speed_chart.png", "image/png")
 
+        # Mileage chart
         summary_df_sorted_mileage = summary_df.sort_values("Total mileage (km)", ascending=False)
         fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
         ax_mileage.bar(summary_df_sorted_mileage["Rider"], summary_df_sorted_mileage["Total mileage (km)"], color="purple")
@@ -218,7 +219,7 @@ if rider_files:
         mileage_img_buf.seek(0)
         st.download_button("⬇️ Download Mileage Chart (PNG)", mileage_img_buf, "mileage_chart.png", "image/png")
 
-        # Save Excel with charts
+        # Save Excel
         output_idle = io.BytesIO()
         wb = Workbook()
         ws = wb.active
@@ -233,14 +234,13 @@ if rider_files:
         img1 = XLImage("idle_temp.png")
         img2 = XLImage("speed_temp.png")
         img3 = XLImage("mileage_temp.png")
-        ws.add_image(img1, "J1")
-        ws.add_image(img2, "J20")
-        ws.add_image(img3, "J39")
+        ws.add_image(img1, "M1")
+        ws.add_image(img2, "M25")
+        ws.add_image(img3, "M49")
 
         wb.save(output_idle)
         output_idle.seek(0)
         st.download_button("⬇️ Download Idle Summary Excel", output_idle, "idle_summary.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        import os
         os.remove("idle_temp.png")
         os.remove("speed_temp.png")
         os.remove("mileage_temp.png")
