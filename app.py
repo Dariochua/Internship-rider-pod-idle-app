@@ -106,7 +106,7 @@ if pod_file:
             fig_weight.savefig(weight_img_buf, format='png', bbox_inches="tight")
             weight_img_buf.seek(0)
             img2 = XLImage(weight_img_buf)
-            img2.anchor = "G26"
+            img2.anchor = "G32"
 
             worksheet.add_image(img1)
             worksheet.add_image(img2)
@@ -279,11 +279,11 @@ if rider_files:
 
             speed_img_buf.seek(0)
             img2 = XLImage(speed_img_buf)
-            img2.anchor = "M26"
+            img2.anchor = "M32"
 
             mileage_img_buf.seek(0)
             img3 = XLImage(mileage_img_buf)
-            img3.anchor = "M51"
+            img3.anchor = "M61"
 
             worksheet.add_image(img1)
             worksheet.add_image(img2)
