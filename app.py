@@ -286,61 +286,71 @@ if rider_files:
 st.header("🚗 Cartrack Summary")
 
 # Upload files
-trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls", "csv"], key="trip")
-fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls", "csv"], key="fuel")
+trip_file = st.file_uploader("Upload Summary Trip Report", type=["xlsx", "xls"], key="trip")
+fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xlsx", "xls"], key="fuel")
 
 if trip_file and fuel_file:
     try:
-        # --- Read trip report ---
-        if trip_file.name.endswith(".csv"):
-            df_trip = pd.read_csv(trip_file)
-        else:
-            df_trip = pd.read_excel(trip_file, skiprows=10)  # Adjust skiprows if needed
+        # --- Read Trip Report ---
+        xl_trip = pd.ExcelFile(trip_file)
 
-        # --- Read fuel report ---
-        if fuel_file.name.endswith(".csv"):
-            df_fuel = pd.read_csv(fuel_file)
+        # Read first few rows to extract Registration number
+        meta_df = xl_trip.parse(xl_trip.sheet_names[0], nrows=15, header=None)
+        reg_row = meta_df[meta_df[0] == "Registration:"]
+        if not reg_row.empty:
+            registration = reg_row.iloc[0, 1]
         else:
-            df_fuel = pd.read_excel(fuel_file, skiprows=14)  # Adjust skiprows if needed
+            registration = "Unknown"
 
-        # --- Clean column names ---
+        # Find data start row: usually where "Driver" column starts
+        full_df = xl_trip.parse(xl_trip.sheet_names[0], header=None)
+        data_start_row = full_df[full_df.iloc[:, 0] == "Driver"].index[0]
+
+        df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=data_start_row)
+
+        # Add extracted Registration as new column
+        df_trip["Registration"] = str(registration).strip()
+
+        # --- Read Fuel Efficiency Report ---
+        xl_fuel = pd.ExcelFile(fuel_file)
+        fuel_df_all = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
+
+        # Find row where 'Vehicle Registration' header starts
+        fuel_header_row = fuel_df_all[fuel_df_all.iloc[:, 0] == "Vehicle Registration"].index[0]
+        df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=fuel_header_row)
+
+        # --- Clean columns ---
         df_trip.columns = df_trip.columns.str.strip()
         df_fuel.columns = df_fuel.columns.str.strip()
-
-        # --- Check columns ---
-        if "Registration" not in df_trip.columns:
-            st.error(f"❌ Column 'Registration' not found in Trip Report. Columns: {list(df_trip.columns)}")
-            st.stop()
 
         if "Vehicle Registration" not in df_fuel.columns:
             st.error(f"❌ Column 'Vehicle Registration' not found in Fuel Report. Columns: {list(df_fuel.columns)}")
             st.stop()
 
-        # --- Clean string columns before merge ---
+        # Clean merge keys
         df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
         df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
         # --- Merge ---
         df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
-        # --- Assign drivers based on End Location logic ---
+        # --- Assign drivers by location ---
         df_summary["Driver"] = "Mohd Hairul"
         df_summary.loc[df_summary["End Location"].str.contains("Ang Mo Kio", case=False, na=False), "Driver"] = "Abdul Rahman"
         df_summary.loc[df_summary["End Location"].str.contains("Hougang|Sengkang", case=False, na=False), "Driver"] = "Abdul Rahman"
 
-        # --- Convert Fuel Consumed ---
-        if "Fuel Consumed" in df_summary.columns:
-            df_summary["Fuel Consumed"] = pd.to_numeric(df_summary["Fuel Consumed"], errors='coerce').fillna(0)
+        # --- Fuel Consumed numeric conversion ---
+        if "Fuel Consumed (litres)" in df_summary.columns:
+            df_summary["Fuel Consumed (litres)"] = pd.to_numeric(df_summary["Fuel Consumed (litres)"], errors='coerce').fillna(0)
         else:
-            st.error("❌ Column 'Fuel Consumed' not found after merge.")
+            st.error(f"❌ Column 'Fuel Consumed (litres)' not found in Fuel Report columns: {list(df_summary.columns)}")
             st.stop()
 
-        # --- Charts ---
-        # Fuel efficiency chart
-        fuel_per_driver = df_summary.groupby("Driver")["Fuel Consumed"].sum().reset_index()
+        # --- Fuel chart ---
+        fuel_per_driver = df_summary.groupby("Driver")["Fuel Consumed (litres)"].sum().reset_index()
 
         fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
-        bars = ax_fuel.bar(fuel_per_driver["Driver"], fuel_per_driver["Fuel Consumed"], color="orange")
+        bars = ax_fuel.bar(fuel_per_driver["Driver"], fuel_per_driver["Fuel Consumed (litres)"], color="orange")
         ax_fuel.set_title("Total Fuel Consumed per Driver (litres)")
         ax_fuel.set_ylabel("Litres")
         plt.xticks(rotation=45)
@@ -355,15 +365,16 @@ if trip_file and fuel_file:
         fuel_img_buf.seek(0)
         st.download_button("⬇️ Download Fuel Chart (PNG)", fuel_img_buf, "fuel_chart.png", "image/png")
 
-        # --- Check for vehicles that didn't move ---
-        df_summary["Moved"] = df_summary["Trip Distance"].fillna(0) > 0
-        df_summary["Vehicle Status"] = df_summary["Moved"].apply(lambda x: "Moved" if x else "Did not move")
+        # --- Moved status ---
+        if "Trip Distance" in df_summary.columns:
+            df_summary["Moved"] = df_summary["Trip Distance"].fillna(0) > 0
+            df_summary["Vehicle Status"] = df_summary["Moved"].apply(lambda x: "Moved" if x else "Did not move")
 
-        # --- Show and download table ---
+        # --- Show summary table ---
         st.subheader("📄 Cartrack Summary Table")
         st.dataframe(df_summary)
 
-        # Excel download
+        # Download Excel
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
