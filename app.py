@@ -294,7 +294,7 @@ if trip_file and fuel_file:
         xl_trip = pd.ExcelFile(trip_file)
         meta = xl_trip.parse(xl_trip.sheet_names[0], header=None, nrows=15)
         reg_row = meta[meta.iloc[:,0].astype(str).str.contains("Registration", na=False)]
-        registration = str(reg_row.iloc[0,1]).strip() if not reg_row.empty else None
+        registration = str(reg_row.iloc[0,1]).strip() if not reg_row.empty and len(reg_row.columns) > 1 else None
 
         raw_trip = xl_trip.parse(xl_trip.sheet_names[0], header=None)
         start_idx = raw_trip[raw_trip.iloc[:,0]=="Driver"].index[0]
