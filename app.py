@@ -284,7 +284,7 @@ if rider_files:
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # -----------------------------
-# Section 3: Cartrack Summary (Fixed Aggregation)
+# Section 3: Cartrack Summary (Fixed Aggregation & Speeding from Fuel Report V2)
 # -----------------------------
 
 st.header("🚗 Cartrack Summary")
@@ -310,14 +310,11 @@ if trip_file and fuel_file:
         df_trip = xl_trip.parse(xl_trip.sheet_names[0], skiprows=start_idx)
         df_trip.columns = df_trip.columns.str.strip()
         df_trip.rename(columns={"Driver": "TripDriver"}, inplace=True)
-        # ensure Registration column
+        # ensure Registration for all rows
         df_trip["Registration"] = registration
         df_trip["Trip Distance"] = pd.to_numeric(df_trip.get("Trip Distance", 0), errors="coerce").fillna(0)
-        # speeding count
-        speed_col = next((c for c in df_trip.columns if re.match(r"Speeding", c, re.IGNORECASE)), None)
-        df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col, 0), errors="coerce").fillna(0) if speed_col else 0
 
-        # --- Read Fuel Efficiency data ---
+        # --- Read Fuel Efficiency data (V2) ---
         xl_fuel = pd.ExcelFile(fuel_file)
         raw_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
         header_idx = raw_fuel[raw_fuel.iloc[:, 0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
@@ -330,48 +327,48 @@ if trip_file and fuel_file:
         df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel.get(fuel_col, 0), errors="coerce").fillna(0)
         df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel.get(dist_col, 0), errors="coerce").fillna(0)
 
-        # --- Aggregate separately ---
+        # --- Extract speeding incidents from fuel report V2 ---
+        speed_col_fuel = next((c for c in df_fuel.columns if re.match(r"Speeding", c, re.IGNORECASE)), None)
+        if speed_col_fuel:
+            df_fuel["Speeding_Count"] = pd.to_numeric(df_fuel[speed_col_fuel], errors="coerce").fillna(0)
+        else:
+            df_fuel["Speeding_Count"] = 0
+
+        # --- Aggregate trip and fuel separately ---
         trip_agg = df_trip.groupby("Registration", as_index=False).agg(
-            Total_Trip_Distance_km=("Trip Distance", "sum"),
-            Total_Speeding_Count=("Speeding_Count", "sum")
+            Total_Trip_Distance_km=("Trip Distance", "sum")
         )
         fuel_agg = df_fuel.groupby("Registration", as_index=False).agg(
             Total_Fuel_Litres=("Fuel Consumed (litres)", "sum"),
-            Total_Distance_Travelled_km=("Distance Travelled (km)", "sum")
+            Total_Distance_Travelled_km=("Distance Travelled (km)", "sum"),
+            Total_Speeding_Count=("Speeding_Count", "sum")
         )
         df_agg = pd.merge(trip_agg, fuel_agg, on="Registration", how="outer").fillna(0)
 
-        # --- Assign drivers using df_trip context ---
-        # Combine df_trip and df_fuel to get End Location context
-        df_context = pd.merge(
-            df_trip,
-            df_fuel[["Registration"]],
-            on="Registration",
-            how="outer"
+        # --- Determine driver per vehicle from trip context ---
+        reg_info = (
+            df_trip.groupby("Registration", as_index=False)
+                   .agg(
+                       TripDriver=("TripDriver", lambda x: next((v for v in x if isinstance(v, str) and v), "")),
+                       EndLocation=("End Location", lambda x: next((v for v in x if isinstance(v, str) and v), ""))
+                   )
         )
         override_map = {
-            "GBB933E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
+            "GBB9339E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
             "GBC9338C": "Toh", "GX9339E": "Masari", "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
         }
         def assign_driver(row):
-            td = row.get("TripDriver")
-            if isinstance(td, str) and td.strip(): return td
-            reg = row.get("Registration", "")
-            if reg in override_map: return override_map[reg]
-            loc = str(row.get("End Location", "") or "")
-            if re.search(r"Punggol|Hougang", loc, re.IGNORECASE): return "Abdul Rahman"
-            if re.search(r"Woodlands|Yishun|Jurong East", loc, re.IGNORECASE): return "Sugathan"
+            if row["Registration"] in override_map:
+                return override_map[row["Registration"]]
+            if row["TripDriver"]:
+                return row["TripDriver"]
+            loc = row.get("EndLocation", "") or ""
+            if re.search(r"Punggol|Hougang|Yishun|Woodlands", loc, re.IGNORECASE): return "Abdul Rahman"
+            if re.search(r"Jurong East", loc, re.IGNORECASE): return "Sugathan"
             if re.search(r"Changi South", loc, re.IGNORECASE): return "Mohd"
             if re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Toh"
             if re.search(r"Kallang", loc, re.IGNORECASE) and not re.search(r"Pasir Panjang", loc, re.IGNORECASE): return "Masari"
             return "Unknown"
-        reg_info = (
-            df_context.groupby("Registration", as_index=False)
-                      .agg(
-                          TripDriver=("TripDriver", lambda x: next((v for v in x if isinstance(v, str) and v), "")),
-                          EndLocation=("End Location", lambda x: next((v for v in x if isinstance(v, str) and v), ""))
-                      )
-        )
         reg_info["Driver"] = reg_info.apply(assign_driver, axis=1)
 
         # --- Mapping table ---
@@ -379,7 +376,7 @@ if trip_file and fuel_file:
         st.subheader("📝 Rider ↔ Vehicle Mapping")
         st.dataframe(mapping)
 
-        # --- Final summary by driver ---
+        # --- Final summary by rider ---
         df_summary = pd.merge(mapping, df_agg, on="Registration", how="left").fillna(0)
         summary = df_summary.groupby("Driver", as_index=False).agg(
             Total_Speeding_Count=("Total_Speeding_Count", "sum"),
