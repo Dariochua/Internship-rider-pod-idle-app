@@ -282,11 +282,6 @@ if rider_files:
 
         st.download_button("⬇️ Download Idle Time Summary Excel", processed_idle, file_name_idle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import io
-
 # -----------------------------
 # Section 3: Cartrack Summary
 # -----------------------------
@@ -324,7 +319,7 @@ if cartrack_trip_file and cartrack_fuel_file:
         def assign_driver(row):
             if isinstance(row["Driver"], str) and row["Driver"].strip():
                 return row["Driver"]
-            end_loc = str(row["End Location"]) if not pd.isna(row["End Location"]) else ""
+            end_loc = str(row["End Location"]) if pd.notna(row["End Location"]) else ""
             if "Ang Mo Kio" in end_loc:
                 return "Abdul Rahman"
             elif "Hougang" in end_loc or "Sengkang" in end_loc:
@@ -360,7 +355,6 @@ if cartrack_trip_file and cartrack_fuel_file:
             height = bar.get_height()
             ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
         st.pyplot(fig_fuel)
 
         # Mileage chart
@@ -373,7 +367,6 @@ if cartrack_trip_file and cartrack_fuel_file:
             height = bar.get_height()
             ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                                 xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
         st.pyplot(fig_mileage)
 
         # Speeding chart
@@ -386,7 +379,6 @@ if cartrack_trip_file and cartrack_fuel_file:
             height = bar.get_height()
             ax_speed.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height),
                               xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-
         st.pyplot(fig_speed)
 
         # Highlight inactive
