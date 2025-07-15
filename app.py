@@ -291,98 +291,83 @@ cartrack_trip_file = st.file_uploader("Upload Summary Trip Report", type=["xls",
 cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xls", "xlsx"], key="fuel")
 
 if cartrack_trip_file and cartrack_fuel_file:
-    # Step 1: Read entire trip file to find Registration
-    trip_all_df = pd.read_excel(cartrack_trip_file, header=None)
-    reg_row = trip_all_df[trip_all_df[0] == "Registration:"]
-    if not reg_row.empty:
-        vehicle_registration = reg_row.iloc[0, 1]
-    else:
-        vehicle_registration = "UNKNOWN"
-
-    # Find where trip table starts (search for "Driver" header)
-    header_row_idx = trip_all_df[trip_all_df[0] == "Driver"].index[0]
-    
-    # Read trip data from that header
-    df_trip = pd.read_excel(cartrack_trip_file, skiprows=header_row_idx)
+    # Read Trip Report directly with proper headers
+    df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0)
     df_trip.columns = df_trip.columns.str.strip()
-    df_trip["Registration"] = vehicle_registration
 
-    # Fix for fuel
-    df_fuel_raw = pd.read_excel(cartrack_fuel_file, header=None)
-    # Find where "Vehicle Registration" header appears
-    fuel_header_idx = df_fuel_raw[df_fuel_raw[0] == "Vehicle Registration"].index[0]
-    df_fuel = pd.read_excel(cartrack_fuel_file, skiprows=fuel_header_idx)
+    # Read Fuel Report directly
+    df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0)
     df_fuel.columns = df_fuel.columns.str.strip()
 
-    # Check columns
-    st.write("Trip columns:", df_trip.columns.tolist())
-    st.write("Fuel columns:", df_fuel.columns.tolist())
+    # Convert merge columns to string
+    df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
+    df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
-    if "Registration" in df_trip.columns and "Vehicle Registration" in df_fuel.columns:
-        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
+    # Merge
+    df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
-        # Assign driver
-        def assign_driver(row):
-            if "Hougang" in str(row["End Location"]) or "Sengkang" in str(row["End Location"]):
-                return "Abdul Rahman"
-            elif "Ang Mo Kio" in str(row["End Location"]):
-                return "Abdul Rahman"
-            elif pd.notna(row.get("Driver", "")) and str(row["Driver"]).strip():
-                return row["Driver"]
-            else:
-                return "Mohd Hairul"
+    # Assign driver logic
+    def assign_driver(row):
+        if "Hougang" in str(row["End Location"]) or "Sengkang" in str(row["End Location"]):
+            return "Abdul Rahman"
+        elif "Ang Mo Kio" in str(row["End Location"]):
+            return "Abdul Rahman"
+        elif pd.notna(row.get("Driver", "")) and str(row["Driver"]).strip():
+            return row["Driver"]
+        else:
+            return "Mohd Hairul"
 
-        df_summary["Driver"] = df_summary.apply(assign_driver, axis=1)
-        df_summary["Status"] = df_summary["Trip Distance"].apply(lambda x: "Not moved" if x == 0 else "Moved")
+    df_summary["Driver"] = df_summary.apply(assign_driver, axis=1)
+    df_summary["Status"] = df_summary["Trip Distance"].apply(lambda x: "Not moved" if x == 0 else "Moved")
 
-        # Charts
-        fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
-        fuel_data = df_summary.groupby("Driver")["Fuel Consumed (litres)"].sum()
-        bars_fuel = ax_fuel.bar(fuel_data.index, fuel_data.values, color="orange")
-        ax_fuel.set_title("Total Fuel Consumed per Driver")
-        ax_fuel.set_ylabel("Litres")
-        plt.xticks(rotation=45, ha="right")
-        for bar in bars_fuel:
-            height = bar.get_height()
-            ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+    # Charts
+    fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
+    fuel_data = df_summary.groupby("Driver")["Fuel Consumed"].sum()
+    bars_fuel = ax_fuel.bar(fuel_data.index, fuel_data.values, color="orange")
+    ax_fuel.set_title("Total Fuel Consumed per Driver")
+    ax_fuel.set_ylabel("Litres")
+    plt.xticks(rotation=45, ha="right")
+    for bar in bars_fuel:
+        height = bar.get_height()
+        ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                         xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+    st.pyplot(fig_fuel)
+
+    fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
+    mileage_data = df_summary.groupby("Driver")["Trip Distance"].sum()
+    bars_mileage = ax_mileage.bar(mileage_data.index, mileage_data.values, color="purple")
+    ax_mileage.set_title("Total Mileage per Driver (km)")
+    ax_mileage.set_ylabel("Km")
+    plt.xticks(rotation=45, ha="right")
+    for bar in bars_mileage:
+        height = bar.get_height()
+        ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+    st.pyplot(fig_mileage)
+
+    fig_speeding, ax_speeding = plt.subplots(figsize=(8, 5))
+    speeding_data = df_summary.groupby("Driver")["# of Events"].sum()
+    bars_speeding = ax_speeding.bar(speeding_data.index, speeding_data.values, color="red")
+    ax_speeding.set_title("Total Speeding Incidents per Driver")
+    ax_speeding.set_ylabel("Incidents")
+    plt.xticks(rotation=45, ha="right")
+    for bar in bars_speeding:
+        height = bar.get_height()
+        ax_speeding.annotate(f"{int(height)}", xy=(bar.get_x() + bar.get_width() / 2, height),
                              xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_fuel)
+    st.pyplot(fig_speeding)
 
-        fig_mileage, ax_mileage = plt.subplots(figsize=(8, 5))
-        mileage_data = df_summary.groupby("Driver")["Trip Distance"].sum()
-        bars_mileage = ax_mileage.bar(mileage_data.index, mileage_data.values, color="purple")
-        ax_mileage.set_title("Total Mileage per Driver (km)")
-        ax_mileage.set_ylabel("Km")
-        plt.xticks(rotation=45, ha="right")
-        for bar in bars_mileage:
-            height = bar.get_height()
-            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_mileage)
+    # Summary table
+    st.subheader("📄 Cartrack Summary Table")
+    st.dataframe(df_summary)
 
-        fig_speeding, ax_speeding = plt.subplots(figsize=(8, 5))
-        speeding_data = df_summary.groupby("Driver")["Speeding"].sum()
-        bars_speeding = ax_speeding.bar(speeding_data.index, speeding_data.values, color="red")
-        ax_speeding.set_title("Total Speeding Incidents per Driver")
-        ax_speeding.set_ylabel("Number of Incidents")
-        plt.xticks(rotation=45, ha="right")
-        for bar in bars_speeding:
-            height = bar.get_height()
-            ax_speeding.annotate(f"{int(height)}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                                 xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
-        st.pyplot(fig_speeding)
+    # Excel download
+    output_cartrack = io.BytesIO()
+    with pd.ExcelWriter(output_cartrack, engine="openpyxl") as writer:
+        df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
+    processed_cartrack = output_cartrack.getvalue()
 
-        st.subheader("📄 Cartrack Summary Table")
-        st.dataframe(df_summary)
-
-        output_cartrack = io.BytesIO()
-        with pd.ExcelWriter(output_cartrack, engine="openpyxl") as writer:
-            df_summary.to_excel(writer, index=False, sheet_name="Cartrack Summary")
-        processed_cartrack = output_cartrack.getvalue()
-
-        st.download_button("⬇️ Download Cartrack Summary Excel",
-                           processed_cartrack,
-                           "cartrack_summary.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    else:
-        st.error("❌ Columns 'Registration' or 'Vehicle Registration' not found. Please double-check your files.")
+    st.download_button("⬇️ Download Cartrack Summary Excel",
+                       processed_cartrack,
+                       "cartrack_summary.xlsx",
+                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
