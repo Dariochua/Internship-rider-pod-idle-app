@@ -183,7 +183,7 @@ if rider_files:
             total_over_15 = sum(over_15)
             num_over_15 = len(over_15)
             max_speed = df_working['Speed (km/h)'].max()
-            status = "Worked"
+            status = "Working for the day"
 
         summary.append({
             "File": file.name,
