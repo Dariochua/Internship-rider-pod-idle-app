@@ -1,3 +1,128 @@
+import streamlit as st
+import pandas as pd
+import io
+import re
+import matplotlib.pyplot as plt
+import datetime
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image as XLImage
+
+st.set_page_config(page_title="Rider POD & Idle Time Analysis", layout="centered")
+st.title("🚚 Rider POD & Idle Time Analysis Web App")
+
+st.markdown("""
+This tool lets you upload Detrack Excel files and get:
+- Rider **POD tracking summary + charts (POD count & weight)**
+- Rider **idle time, mileage, and max speed summary + charts**
+- Downloadable tables and **charts embedded in downloadable Excel**
+- All data restricted to working hours: 8:30 AM – 5:30 PM
+
+---
+""")
+
+# -----------------------------
+# Section 1: POD Tracking
+# -----------------------------
+st.header("📦 POD Tracking Summary")
+
+pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
+
+if pod_file:
+    df_pod = pd.read_excel(pod_file)
+    df_pod.columns = df_pod.columns.str.strip()
+
+    st.success("✅ POD file uploaded successfully!")
+
+    if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns and "Weight" in df_pod.columns and "Delivery Date" in df_pod.columns:
+        try:
+            df_pod["Delivery Date"] = pd.to_datetime(df_pod["Delivery Date"], errors='coerce')
+            df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce').dt.time
+
+            df_pod["POD DateTime"] = df_pod.apply(
+                lambda row: datetime.datetime.combine(row["Delivery Date"], row["POD Time"]) if pd.notnull(row["Delivery Date"]) and pd.notnull(row["POD Time"]) else pd.NaT,
+                axis=1
+            )
+
+            delivery_date_mode = df_pod["Delivery Date"].mode()[0]
+            delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
+        except:
+            delivery_date = "unknown_date"
+    else:
+        st.error("❌ Required columns 'Assign to', 'POD Time', 'Weight', or 'Delivery Date' not found.")
+        delivery_date = "unknown_date"
+
+    if delivery_date != "unknown_date":
+        pod_summary = df_pod.groupby("Assign to").agg(
+            Earliest_POD=("POD DateTime", "min"),
+            Latest_POD=("POD DateTime", "max"),
+            Total_PODs=("POD DateTime", "count"),
+            Total_Weight=("Weight", "sum")
+        ).reset_index()
+
+        st.subheader("📄 POD Summary Table")
+        st.dataframe(pod_summary)
+
+        # POD Count Chart
+        pod_summary_sorted = pod_summary.sort_values("Total_PODs", ascending=False)
+        fig_pod, ax_pod = plt.subplots(figsize=(8, 5))
+        bars_pod = ax_pod.bar(pod_summary_sorted["Assign to"], pod_summary_sorted["Total_PODs"], color="orange")
+        ax_pod.set_title("Total PODs per Rider")
+        ax_pod.set_xlabel("Rider")
+        ax_pod.set_ylabel("Total PODs")
+        plt.xticks(rotation=60, ha='right')
+        for bar in bars_pod:
+            height = bar.get_height()
+            ax_pod.annotate(f"{height}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        st.pyplot(fig_pod)
+
+        # Save POD chart buffer
+        pod_img_buf = io.BytesIO()
+        fig_pod.savefig(pod_img_buf, format="png", bbox_inches="tight")
+        pod_img_buf.seek(0)
+
+        st.download_button("⬇️ Download POD Chart (PNG)", pod_img_buf, "pod_chart.png", "image/png")
+
+        # Weight Chart
+        pod_summary_sorted_weight = pod_summary.sort_values("Total_Weight", ascending=False)
+        fig_weight, ax_weight = plt.subplots(figsize=(8, 5))
+        bars_weight = ax_weight.bar(pod_summary_sorted_weight["Assign to"], pod_summary_sorted_weight["Total_Weight"], color="blue")
+        ax_weight.set_title("Total Weight per Rider")
+        ax_weight.set_xlabel("Rider")
+        ax_weight.set_ylabel("Total Weight")
+        plt.xticks(rotation=60, ha='right')
+        for bar in bars_weight:
+            height = bar.get_height()
+            ax_weight.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+        st.pyplot(fig_weight)
+
+        # Save Weight chart buffer
+        weight_img_buf = io.BytesIO()
+        fig_weight.savefig(weight_img_buf, format="png", bbox_inches="tight")
+        weight_img_buf.seek(0)
+
+        st.download_button("⬇️ Download Weight Chart (PNG)", weight_img_buf, "weight_chart.png", "image/png")
+
+        # Excel file with images
+        output_pod = io.BytesIO()
+        with pd.ExcelWriter(output_pod, engine='openpyxl') as writer:
+            pod_summary.to_excel(writer, index=False, sheet_name="POD Summary")
+            workbook = writer.book
+            sheet = writer.sheets["POD Summary"]
+
+            # Add images
+            pod_img = XLImage(pod_img_buf)
+            pod_img.anchor = "H2"
+            sheet.add_image(pod_img)
+
+            weight_img = XLImage(weight_img_buf)
+            weight_img.anchor = "H20"
+            sheet.add_image(weight_img)
+
+        processed_pod = output_pod.getvalue()
+        file_name_pod = f"pod_summary_{delivery_date}.xlsx"
+
+        st.download_button("⬇️ Download POD Summary Excel with Charts", processed_pod, file_name_pod, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 # -----------------------------
 # Section 2: Idle Time Analysis
 # -----------------------------
