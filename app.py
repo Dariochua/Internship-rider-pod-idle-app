@@ -285,98 +285,109 @@ if rider_files:
 # -----------------------------
 # Section 3: Cartrack Summary
 # -----------------------------
-st.header("🚗 Cartrack Summary")
+st.header("3️⃣ 🚗 Cartrack Summary")
 
-cartrack_files = st.file_uploader("Upload Summary Trip and Fuel Efficiency Reports", type=["xls", "xlsx"], accept_multiple_files=True, key="cartrack")
+cartrack_files = st.file_uploader("Upload Summary Trip and Fuel Efficiency Reports together", type=["xls", "xlsx"], accept_multiple_files=True, key="cartrack")
 
 if cartrack_files and len(cartrack_files) == 2:
-    # Identify which file is trip and which is fuel
+    # Identify files
     trip_file = None
     fuel_file = None
 
     for f in cartrack_files:
-        if "summary" in f.name.lower():
+        if "summary" in f.name.lower() or "trip" in f.name.lower():
             trip_file = f
         elif "fuel" in f.name.lower():
             fuel_file = f
 
     if trip_file and fuel_file:
-        df_trip = pd.read_excel(trip_file)
-        df_fuel = pd.read_excel(fuel_file)
+        # Load files
+        df_trip = pd.read_excel(trip_file, engine='xlrd')
+        df_fuel = pd.read_excel(fuel_file, engine='xlrd')
 
-        # Merge using correct columns
-        df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
+        # Strip columns
+        df_trip.columns = df_trip.columns.str.strip()
+        df_fuel.columns = df_fuel.columns.str.strip()
 
-        # Assign drivers
-        def assign_driver(row):
-            if pd.isna(row["End Location"]):
-                return "Mohd Hairul"
-            elif "ang mo kio" in row["End Location"].lower():
-                return "Abdul Rahman"
-            elif "hougang" in row["End Location"].lower() or "sengkang" in row["End Location"].lower():
-                return "Abdul Rahman"
-            else:
-                return "Mohd Hairul"
+        # Debug: show columns
+        st.write("Trip file columns:", df_trip.columns.tolist())
+        st.write("Fuel file columns:", df_fuel.columns.tolist())
 
-        df_summary["Driver"] = df_summary.apply(assign_driver, axis=1)
+        # Check if expected columns exist
+        if "Registration" not in df_trip.columns or "Vehicle Registration" not in df_fuel.columns:
+            st.error("❌ Columns 'Registration' or 'Vehicle Registration' not found. Please double-check your files.")
+        else:
+            # Merge
+            df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
-        # Vehicles that didn't move
-        df_summary["Inactive"] = df_summary["Trip Distance"].fillna(0) == 0
+            # Assign drivers
+            def assign_driver(row):
+                if pd.isna(row["End Location"]):
+                    return "Mohd Hairul"
+                elif "ang mo kio" in row["End Location"].lower():
+                    return "Abdul Rahman"
+                elif "hougang" in row["End Location"].lower() or "sengkang" in row["End Location"].lower():
+                    return "Abdul Rahman"
+                else:
+                    return "Mohd Hairul"
 
-        # Aggregate metrics per driver
-        driver_summary = df_summary.groupby("Driver").agg(
-            Total_Trip_Distance=("Trip Distance", "sum"),
-            Total_Fuel_Consumed=("Fuel Consumed (litres)", "sum"),
-            Num_Speeding_Incidents=("Speeding", "sum")
-        ).reset_index()
+            df_summary["Driver"] = df_summary.apply(assign_driver, axis=1)
 
-        driver_summary["Fuel_Efficiency (km/litre)"] = driver_summary["Total_Trip_Distance"] / driver_summary["Total_Fuel_Consumed"]
+            # Vehicles that didn't move
+            df_summary["Inactive"] = df_summary["Trip Distance"].fillna(0) == 0
 
-        st.subheader("📄 Cartrack Driver Summary Table")
-        st.dataframe(driver_summary)
+            # Aggregate metrics per driver
+            driver_summary = df_summary.groupby("Driver").agg(
+                Total_Trip_Distance=("Trip Distance", "sum"),
+                Total_Fuel_Consumed=("Fuel Consumed (litres)", "sum"),
+                Num_Speeding_Incidents=("Speeding", "sum")
+            ).reset_index()
 
-        # Chart: Fuel Efficiency
-        fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
-        bars_fuel = ax_fuel.bar(driver_summary["Driver"], driver_summary["Fuel_Efficiency (km/litre)"], color="teal")
-        ax_fuel.set_title("Fuel Efficiency per Driver (km/litre)")
-        ax_fuel.set_ylabel("Fuel Efficiency (km/litre)")
-        plt.xticks(rotation=45, ha='right')
-        for bar in bars_fuel:
-            height = bar.get_height()
-            ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
-                             xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            driver_summary["Fuel_Efficiency (km/litre)"] = driver_summary["Total_Trip_Distance"] / driver_summary["Total_Fuel_Consumed"]
 
-        st.pyplot(fig_fuel)
+            st.subheader("📄 Cartrack Driver Summary Table")
+            st.dataframe(driver_summary)
 
-        # Chart: Speeding incidents
-        fig_speeding, ax_speeding = plt.subplots(figsize=(8, 5))
-        bars_speeding = ax_speeding.bar(driver_summary["Driver"], driver_summary["Num_Speeding_Incidents"], color="red")
-        ax_speeding.set_title("Speeding Incidents per Driver")
-        ax_speeding.set_ylabel("Speeding Incidents")
-        plt.xticks(rotation=45, ha='right')
-        for bar in bars_speeding:
-            height = bar.get_height()
-            ax_speeding.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+            # Chart: Fuel Efficiency
+            fig_fuel, ax_fuel = plt.subplots(figsize=(8, 5))
+            bars_fuel = ax_fuel.bar(driver_summary["Driver"], driver_summary["Fuel_Efficiency (km/litre)"], color="teal")
+            ax_fuel.set_title("Fuel Efficiency per Driver (km/litre)")
+            ax_fuel.set_ylabel("Fuel Efficiency (km/litre)")
+            plt.xticks(rotation=45, ha='right')
+            for bar in bars_fuel:
+                height = bar.get_height()
+                ax_fuel.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height),
                                  xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            st.pyplot(fig_fuel)
 
-        st.pyplot(fig_speeding)
+            # Chart: Speeding incidents
+            fig_speeding, ax_speeding = plt.subplots(figsize=(8, 5))
+            bars_speeding = ax_speeding.bar(driver_summary["Driver"], driver_summary["Num_Speeding_Incidents"], color="red")
+            ax_speeding.set_title("Speeding Incidents per Driver")
+            ax_speeding.set_ylabel("Speeding Incidents")
+            plt.xticks(rotation=45, ha='right')
+            for bar in bars_speeding:
+                height = bar.get_height()
+                ax_speeding.annotate(f"{height:.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                                     xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+            st.pyplot(fig_speeding)
 
-        # Highlight vehicles that didn't move
-        inactive_vehicles = df_summary[df_summary["Inactive"]]["Registration"].unique()
-        if len(inactive_vehicles) > 0:
-            st.warning(f"⚠️ Vehicles that did not move: {', '.join(inactive_vehicles)}")
+            # Highlight vehicles that didn't move
+            inactive_vehicles = df_summary[df_summary["Inactive"]]["Registration"].unique()
+            if len(inactive_vehicles) > 0:
+                st.warning(f"⚠️ Vehicles that did not move: {', '.join(inactive_vehicles)}")
 
-        # Downloadable summary
-        output_cartrack = io.BytesIO()
-        with pd.ExcelWriter(output_cartrack, engine='openpyxl') as writer:
-            driver_summary.to_excel(writer, index=False, sheet_name="Driver Summary")
-            df_summary.to_excel(writer, index=False, sheet_name="Detailed Data")
-        processed_cartrack = output_cartrack.getvalue()
+            # Downloadable summary
+            output_cartrack = io.BytesIO()
+            with pd.ExcelWriter(output_cartrack, engine='openpyxl') as writer:
+                driver_summary.to_excel(writer, index=False, sheet_name="Driver Summary")
+                df_summary.to_excel(writer, index=False, sheet_name="Detailed Data")
+            processed_cartrack = output_cartrack.getvalue()
 
-        st.download_button("⬇️ Download Cartrack Summary Excel", processed_cartrack, "cartrack_summary.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("⬇️ Download Cartrack Summary Excel", processed_cartrack, "cartrack_summary.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     else:
-        st.error("❌ Please upload both Summary Trip Report and Fuel Efficiency Report together.")
+        st.error("❌ Please upload both Summary Trip and Fuel Efficiency files.")
 else:
-    st.info("Please upload exactly two files: Summary Trip Report and Fuel Efficiency Report.")
+    st.info("Please upload exactly two files: Summary Trip and Fuel Efficiency Report.")
