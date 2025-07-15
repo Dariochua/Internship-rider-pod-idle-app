@@ -292,52 +292,55 @@ cartrack_fuel_file = st.file_uploader("Upload Fuel Efficiency Report", type=["xl
 
 if cartrack_trip_file and cartrack_fuel_file:
     try:
-        # Trip file — use correct sheet and skip header
+        # Read raw trip file to locate headers
         df_trip_raw = pd.read_excel(cartrack_trip_file, sheet_name=0, header=None)
-
-        # Find the row where "Driver" appears and set it as header
         trip_header_row = df_trip_raw[df_trip_raw.iloc[:, 0] == "Driver"].index[0]
         df_trip = pd.read_excel(cartrack_trip_file, sheet_name=0, header=trip_header_row)
 
-        # Fill down Registration
+        # Get registration value from top
         reg_row = df_trip_raw[df_trip_raw.iloc[:, 0] == "Registration:"].index[0]
-        registration_value = df_trip_raw.iloc[reg_row, 0+1]  # The cell next to "Registration:"
+        registration_value = df_trip_raw.iloc[reg_row, 1]  # column B
+
         df_trip["Registration"] = registration_value
 
-        # Fuel file — use correct header row
+        # Read raw fuel file to locate headers
         df_fuel_raw = pd.read_excel(cartrack_fuel_file, sheet_name=0, header=None)
         fuel_header_row = df_fuel_raw[df_fuel_raw.iloc[:, 0] == "Vehicle Registration"].index[0]
         df_fuel = pd.read_excel(cartrack_fuel_file, sheet_name=0, header=fuel_header_row)
 
-        # Strip and clean
+        # Clean columns
         df_trip["Registration"] = df_trip["Registration"].astype(str).str.strip()
         df_fuel["Vehicle Registration"] = df_fuel["Vehicle Registration"].astype(str).str.strip()
 
         # Merge
         df_summary = pd.merge(df_trip, df_fuel, left_on="Registration", right_on="Vehicle Registration", how="left")
 
-        # Assign drivers based on End Location
+        # Assign drivers
         def assign_driver(row):
             if isinstance(row["Driver"], str) and row["Driver"].strip():
                 return row["Driver"]
-            if "Ang Mo Kio" in str(row["End Location"]):
+            end_loc = str(row["End Location"])
+            if "Ang Mo Kio" in end_loc:
                 return "Abdul Rahman"
-            elif "Hougang" in str(row["End Location"]) or "Sengkang" in str(row["End Location"]):
+            elif "Hougang" in end_loc or "Sengkang" in end_loc:
                 return "Abdul Rahman"
             else:
                 return "Mohd Hairul"
 
         df_summary["Final Driver"] = df_summary.apply(assign_driver, axis=1)
 
-        # Summarize: Fuel consumed, mileage, speeding events
+        # Summarize
         summary_group = df_summary.groupby("Final Driver").agg({
             "Fuel Consumed": "sum",
             "Distance Travelled (Km)": "sum",
-            "# of Events": "sum"  # from fuel report
+            "# of Events": "sum"
         }).reset_index()
 
-        # Rename for clarity
-        summary_group.rename(columns={"Fuel Consumed": "Fuel Consumed (L)", "Distance Travelled (Km)": "Mileage (Km)", "# of Events": "Speeding Events"}, inplace=True)
+        summary_group.rename(columns={
+            "Fuel Consumed": "Fuel Consumed (L)",
+            "Distance Travelled (Km)": "Mileage (Km)",
+            "# of Events": "Speeding Events"
+        }, inplace=True)
 
         st.subheader("📄 Cartrack Summary Table")
         st.dataframe(summary_group)
@@ -381,10 +384,10 @@ if cartrack_trip_file and cartrack_fuel_file:
 
         st.pyplot(fig_speed)
 
-        # Highlight vehicles with 0 mileage
+        # Highlight inactive
         df_summary["Inactive Vehicle"] = df_summary["Distance Travelled (Km)"].apply(lambda x: "Yes" if x == 0 else "No")
 
-        # Excel download
+        # Excel export
         output_summary = io.BytesIO()
         with pd.ExcelWriter(output_summary, engine='openpyxl') as writer:
             summary_group.to_excel(writer, index=False, sheet_name="Driver Summary")
