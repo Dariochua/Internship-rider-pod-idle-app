@@ -350,7 +350,7 @@ if trip_file and fuel_file:
             how="outer"
         )
         override_map = {
-            "GBB9339E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
+            "GBB933E": "Abdul Rahman", "GBB933Z": "Mohd", "GBC8305D": "Sugathan",
             "GBC9338C": "Toh", "GX9339E": "Masari", "GY933T": "Mohd Hairul", "GBB933X": "Unknown"
         }
         def assign_driver(row):
