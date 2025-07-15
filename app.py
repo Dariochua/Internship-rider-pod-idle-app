@@ -31,7 +31,6 @@ if pod_file:
     df_pod.columns = df_pod.columns.str.strip()  # Clean header spaces
 
     st.success("✅ POD file uploaded successfully!")
-    st.write("Columns detected:", df_pod.columns.tolist())
 
     if "POD Time" in df_pod.columns and "Assign to" in df_pod.columns and "Weight" in df_pod.columns and "Delivery Date" in df_pod.columns:
         try:
