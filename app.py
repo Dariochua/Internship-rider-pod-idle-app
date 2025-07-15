@@ -37,9 +37,10 @@ if pod_file:
         df_pod["POD Time"] = pd.to_datetime(df_pod["POD Time"], errors='coerce')
 
         if "Delivery Date" in df_pod.columns:
-            delivery_date_raw = df_pod["Delivery Date"].iloc[0]
             try:
-                delivery_date = pd.to_datetime(delivery_date_raw).strftime("%Y-%m-%d")
+                df_pod["Delivery Date"] = pd.to_datetime(df_pod["Delivery Date"], errors='coerce')
+                delivery_date_mode = df_pod["Delivery Date"].mode()[0]
+                delivery_date = delivery_date_mode.strftime("%Y-%m-%d")
             except:
                 delivery_date = "unknown_date"
         else:
