@@ -320,29 +320,27 @@ if trip_file and fuel_file:
         speed_col = next((c for c in df_trip.columns if "Speeding" in c), None)
         df_trip["Speeding_Count"] = pd.to_numeric(df_trip.get(speed_col, 0), errors="coerce").fillna(0) if speed_col else 0
 
-        # --- Read Fuel Efficiency ---
+        # --- Read Fuel Efficiency ---# --- Read Fuel Efficiency ---
         xl_fuel = pd.ExcelFile(fuel_file)
-        # --- Read Fuel Efficiency ---
-        xl_fuel = pd.ExcelFile(fuel_file)
-raw_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
-header_idx = raw_fuel[raw_fuel.iloc[:, 0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
-df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
-df_fuel.columns = df_fuel.columns.str.strip()
-df_fuel.rename(columns={"Vehicle Registration": "Registration"}, inplace=True)
-df_fuel["Registration"] = df_fuel["Registration"].astype(str).str.strip()
-
-fuel_col = next((c for c in df_fuel.columns if "Fuel Consumed" in c), None)
-dist_col = next((c for c in df_fuel.columns if "Distance Travelled" in c), None)
-
-if fuel_col and fuel_col in df_fuel.columns:
-    df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel[fuel_col], errors="coerce").fillna(0)
-else:
-    df_fuel["Fuel Consumed (litres)"] = 0
-
-if dist_col and dist_col in df_fuel.columns:
-    df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel[dist_col], errors="coerce").fillna(0)
-else:
-    df_fuel["Distance Travelled (km)"] = 0
+        raw_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], header=None)
+        header_idx = raw_fuel[raw_fuel.iloc[:, 0].astype(str).str.contains("Vehicle Registration", na=False)].index[0]
+        df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
+        df_fuel.columns = df_fuel.columns.str.strip()
+        df_fuel.rename(columns={"Vehicle Registration": "Registration"}, inplace=True)
+        df_fuel["Registration"] = df_fuel["Registration"].astype(str).str.strip()
+        
+        fuel_col = next((c for c in df_fuel.columns if "Fuel Consumed" in c), None)
+        dist_col = next((c for c in df_fuel.columns if "Distance Travelled" in c), None)
+        
+        if fuel_col and fuel_col in df_fuel.columns:
+            df_fuel["Fuel Consumed (litres)"] = pd.to_numeric(df_fuel[fuel_col], errors="coerce").fillna(0)
+        else:
+            df_fuel["Fuel Consumed (litres)"] = 0
+        
+        if dist_col and dist_col in df_fuel.columns:
+            df_fuel["Distance Travelled (km)"] = pd.to_numeric(df_fuel[dist_col], errors="coerce").fillna(0)
+        else:
+            df_fuel["Distance Travelled (km)"] = 0
 
 
         # --- Aggregate Trip Data ---
