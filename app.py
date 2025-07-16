@@ -117,7 +117,7 @@ if pod_file:
 
 # ----------------------------- Idle Section -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
-st.markdown("ℹ️ **Go to Detrack > Vehicles > Click on download route for each individual riders and upload all here.**")
+st.markdown("ℹ️ **Go to Detrack > Today's Job > Vehicles > Click on download route for each individual riders and upload all here.**")
 rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
 
 if rider_files:
