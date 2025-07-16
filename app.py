@@ -327,7 +327,10 @@ if trip_file and fuel_file:
         df_fuel = xl_fuel.parse(xl_fuel.sheet_names[0], skiprows=header_idx)
         df_fuel.columns = df_fuel.columns.str.strip()
         df_fuel.rename(columns={"Vehicle Registration": "Registration"}, inplace=True)
-        df_fuel["Registration"] = df_fuel["Registration"].apply(lambda x: str(x).strip() if pd.notna(x) else "")
+        df_fuel["Registration"] = df_fuel["Registration"].apply(
+            lambda x: x.strip() if isinstance(x, str) 
+            else (str(int(x)).strip() if isinstance(x, float) and not pd.isna(x) else "")
+        )
 
         fuel_col = next((c for c in df_fuel.columns if "Fuel Consumed" in c), None)
         dist_col = next((c for c in df_fuel.columns if "Distance Travelled" in c), None)
