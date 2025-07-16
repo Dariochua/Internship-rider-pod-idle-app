@@ -24,7 +24,7 @@ This tool lets you upload Detrack Excel files and get:
 
 # ----------------------------- POD Section -----------------------------
 st.header("📦 POD Tracking Summary")
-st.markdown("ℹ️ **Go to Detrack > Today's Job > All Jobs > Export.**")
+st.markdown("ℹ️ **Go to Detrack > Today's Job > All Jobs > Export Excel.**")
 pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
 
 if pod_file:
