@@ -24,7 +24,7 @@ This tool lets you upload Detrack Excel files and get:
 
 # ----------------------------- POD Section -----------------------------
 st.header("📦 POD Tracking Summary")
-st.markdown("ℹ️ **Go to Detrack > Today's Job > All Jobs > Export Excel.**")
+st.markdown("ℹ️ **Go to Detrack > Today's Job > All Jobs > Export Excel**")
 pod_file = st.file_uploader("Upload POD Excel file (delivery item)", type=["xlsx", "xls"], key="pod")
 
 if pod_file:
@@ -117,7 +117,7 @@ if pod_file:
 
 # ----------------------------- Idle Section -----------------------------
 st.header("🕒 Idle Time, Mileage & Max Speed Analysis")
-st.markdown("ℹ️ **Go to Detrack > Today's Jobs > Vehicles > Click on download route for each individual riders.**")
+st.markdown("ℹ️ **Go to Detrack > Today's Jobs > Vehicles > Click on download route for each individual riders**")
 rider_files = st.file_uploader("Upload multiple rider Excel files (vehicle route)", type=["xlsx", "xls"], accept_multiple_files=True, key="idle")
 
 if rider_files:
