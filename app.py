@@ -240,7 +240,7 @@ if rider_files:
         plt.xticks(rotation=60, ha='right')
         for bar in bars_mileage:
             height = bar.get_height()
-            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', fontsize=6)
+            ax_mileage.annotate(f"{height:.1f}", xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', fontsize=7)
 
         # Show on app and PNG download
         st.pyplot(fig_idle)
